@@ -1,129 +1,48 @@
-import { MarkersBar } from "@/components/markers-bar";
-import { Scrubber } from "@/components/scrubber";
-import { SourceChip } from "@/components/source-chip";
-import { SpeedBar } from "@/components/speed-bar";
-import { ThumbStrip } from "@/components/thumb-strip";
-import { Timeline } from "@/components/timeline";
-import { ZoomableVideo } from "@/components/zoomable-video";
+import { LibraryList } from "@/components/library-list";
+import { LibrarySearch } from "@/components/library-search";
+import {
+  addVideo,
+  listAllTags,
+  listVideos,
+  type VideoRecord,
+  type VideoSourceKind,
+} from "@/db/library";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
-import { useVideoPlayer } from "expo-video";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const FRAME = 1 / 30;
+export default function Library() {
+  const [items, setItems] = useState<VideoRecord[]>([]);
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
-export default function Index() {
-  const [uri, setUri] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [speed, setSpeed] = useState(1);
-  const [markers, setMarkers] = useState<number[]>([]);
-  const wasPlayingRef = useRef(false);
+  const refresh = useCallback(async () => {
+    const [list, tags] = await Promise.all([
+      listVideos({ search, tag: activeTag ?? undefined }),
+      listAllTags(),
+    ]);
+    setItems(list);
+    setAllTags(tags);
+    setReady(true);
+  }, [search, activeTag]);
 
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = false;
-    p.muted = false;
-    p.timeUpdateEventInterval = 0.03;
-  });
-
-  useEffect(() => {
-    if (!uri) return;
-    const sub = player.addListener("statusChange", ({ status }) => {
-      if (status === "readyToPlay") {
-        setDuration(player.duration || 0);
-        player.playbackRate = speed;
-      }
-    });
-    return () => sub.remove();
-  }, [uri, player, speed]);
-
-  useEffect(() => {
-    if (!uri) return;
-    try {
-      player.playbackRate = speed;
-    } catch {}
-  }, [speed, player, uri]);
-
-  useEffect(() => {
-    if (!uri) return;
-    const sub = player.addListener("timeUpdate", ({ currentTime: t }) => {
-      setCurrentTime(t);
-    });
-    return () => sub.remove();
-  }, [uri, player]);
-
-  const loadUri = useCallback((u: string) => {
-    setLoading(true);
-    setDuration(0);
-    setCurrentTime(0);
-    setMarkers([]);
-    setUri(u);
-    setTimeout(() => setLoading(false), 400);
-  }, []);
-
-  const handleIncomingUrl = useCallback(
-    (u: string) => {
-      if (!u) return;
-      if (u.startsWith("file://") || u.startsWith("content://")) {
-        loadUri(u);
-        return;
-      }
-      if (u.startsWith("http")) {
-        if (/\.(mp4|mov|m4v|webm|mkv|avi|hls|m3u8)(\?|$)/i.test(u)) {
-          loadUri(u);
-        }
-      }
-    },
-    [loadUri]
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
   );
 
-  useEffect(() => {
-    // On web, getInitialURL returns the current page URL — don't treat that as a video.
-    if (Platform.OS !== "web") {
-      Linking.getInitialURL().then((u) => {
-        if (u) handleIncomingUrl(u);
-      });
-    }
-    const sub = Linking.addEventListener("url", ({ url }) => handleIncomingUrl(url));
-    return () => sub.remove();
-  }, [handleIncomingUrl]);
-
-  // Web-only: drag a video file onto the window to import it.
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-    const onDragOver = (e: DragEvent) => {
-      if (e.dataTransfer?.types.includes("Files")) {
-        e.preventDefault();
-      }
-    };
-    const onDrop = (e: DragEvent) => {
-      const f = e.dataTransfer?.files?.[0];
-      if (!f) return;
-      if (!f.type.startsWith("video/")) return;
-      e.preventDefault();
-      const url = URL.createObjectURL(f);
-      loadUri(url);
-    };
-    window.addEventListener("dragover", onDragOver);
-    window.addEventListener("drop", onDrop);
-    return () => {
-      window.removeEventListener("dragover", onDragOver);
-      window.removeEventListener("drop", onDrop);
-    };
-  }, [loadUri]);
+  const openVideo = useCallback(async (uri: string, source: VideoSourceKind) => {
+    const rec = await addVideo({ uri, source });
+    router.push({ pathname: "/play/[id]", params: { id: rec.id } });
+  }, []);
 
   const pickFromLibrary = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -135,8 +54,8 @@ export default function Index() {
       preferredAssetRepresentationMode:
         ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
     });
-    if (!res.canceled && res.assets[0]) loadUri(res.assets[0].uri);
-  }, [loadUri]);
+    if (!res.canceled && res.assets[0]) openVideo(res.assets[0].uri, "photos");
+  }, [openVideo]);
 
   const pickFromFiles = useCallback(async () => {
     const res = await DocumentPicker.getDocumentAsync({
@@ -144,258 +63,173 @@ export default function Index() {
       copyToCacheDirectory: true,
       multiple: false,
     });
-    if (!res.canceled && res.assets[0]) loadUri(res.assets[0].uri);
-  }, [loadUri]);
+    if (!res.canceled && res.assets[0]) openVideo(res.assets[0].uri, "files");
+  }, [openVideo]);
 
-  const onScrubStart = useCallback(() => {
-    wasPlayingRef.current = player.playing;
-    player.pause();
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [player]);
-
-  const onScrub = useCallback(
-    (t: number) => {
-      player.currentTime = t;
-      setCurrentTime(t);
-    },
-    [player]
-  );
-
-  const onScrubEnd = useCallback(() => {
-    if (wasPlayingRef.current) player.play();
-    if (Platform.OS !== "web")
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [player]);
-
-  const togglePlay = useCallback(() => {
-    if (player.playing) player.pause();
-    else player.play();
-  }, [player]);
-
-  const jumpFrames = useCallback(
-    (frames: number) => {
-      player.pause();
-      const t = Math.max(0, Math.min(duration, player.currentTime + frames * FRAME));
-      player.currentTime = t;
-      setCurrentTime(t);
-      if (Platform.OS !== "web") {
-        if (Math.abs(frames) >= 10) {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        } else if (Math.abs(frames) >= 5) {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        } else {
-          Haptics.selectionAsync();
+  const handleIncomingUrl = useCallback(
+    (u: string) => {
+      if (!u) return;
+      if (u.startsWith("file://") || u.startsWith("content://")) {
+        openVideo(u, "shared");
+        return;
+      }
+      if (u.startsWith("http")) {
+        if (/\.(mp4|mov|m4v|webm|mkv|avi|hls|m3u8)(\?|$)/i.test(u)) {
+          openVideo(u, "url");
         }
       }
     },
-    [player, duration]
+    [openVideo]
   );
 
-  const reset = useCallback(() => {
-    setUri(null);
-    setDuration(0);
-    setCurrentTime(0);
-    setMarkers([]);
-  }, []);
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      Linking.getInitialURL().then((u) => {
+        if (u) handleIncomingUrl(u);
+      });
+    }
+    const sub = Linking.addEventListener("url", ({ url }) => handleIncomingUrl(url));
+    return () => sub.remove();
+  }, [handleIncomingUrl]);
 
-  const addMarker = useCallback(() => {
-    setMarkers((prev) => {
-      const t = currentTime;
-      if (prev.some((m) => Math.abs(m - t) < 0.01)) return prev;
-      const next = [...prev, t].sort((a, b) => a - b);
-      return next;
-    });
-    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [currentTime]);
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      const f = e.dataTransfer?.files?.[0];
+      if (!f || !f.type.startsWith("video/")) return;
+      e.preventDefault();
+      openVideo(URL.createObjectURL(f), "drop");
+    };
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [openVideo]);
 
-  const jumpToMarker = useCallback(
-    (t: number) => {
-      player.currentTime = t;
-      setCurrentTime(t);
-      if (Platform.OS !== "web") Haptics.selectionAsync();
-    },
-    [player]
-  );
-
-  const removeMarker = useCallback((t: number) => {
-    setMarkers((prev) => prev.filter((m) => Math.abs(m - t) > 0.001));
-  }, []);
-
-  const clearAllMarkers = useCallback(() => {
-    setMarkers([]);
-    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-  }, []);
-
-  const prevMarker = useCallback(() => {
-    const cands = markers.filter((m) => m < currentTime - 0.05);
-    if (!cands.length) return;
-    jumpToMarker(cands[cands.length - 1]);
-  }, [markers, currentTime, jumpToMarker]);
-
-  const nextMarker = useCallback(() => {
-    const cand = markers.find((m) => m > currentTime + 0.05);
-    if (cand === undefined) return;
-    jumpToMarker(cand);
-  }, [markers, currentTime, jumpToMarker]);
-
-  const sortedMarkers = useMemo(() => [...markers].sort((a, b) => a - b), [markers]);
-
-  if (!uri) {
-    return <ImportScreen onLibrary={pickFromLibrary} onFiles={pickFromFiles} />;
-  }
+  const hasAny = items.length > 0 || search.length > 0 || activeTag !== null;
 
   return (
     <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
-     <View style={styles.editorContainer}>
-      <View style={styles.topBar}>
-        <Pressable style={styles.iconBtn} onPress={reset} hitSlop={12}>
-          <Ionicons name="chevron-back" size={22} color="#fff" />
-        </Pressable>
-        <Text style={styles.topTitle}>Scrub</Text>
-        <Pressable style={styles.iconBtn} onPress={pickFromLibrary} hitSlop={12}>
-          <Ionicons name="videocam-outline" size={20} color="#fff" />
-        </Pressable>
-      </View>
-
-      <Timeline
-        duration={duration}
-        currentTime={currentTime}
-        markers={sortedMarkers}
-      />
-
-      <View style={styles.videoWrap}>
-        <ZoomableVideo player={player} />
-        {loading && (
-          <View style={styles.loader} pointerEvents="none">
-            <ActivityIndicator size="large" color="#fff" />
+      <View style={styles.header}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.brand}>Scrub</Text>
+            <Text style={styles.subtitle}>
+              {items.length === 0 && !search && !activeTag
+                ? "Frame-perfect scrubbing for any video"
+                : `${items.length} ${items.length === 1 ? "video" : "videos"}`}
+            </Text>
           </View>
-        )}
-        <View style={styles.sourceOverlay} pointerEvents="box-none">
-          <SourceChip uri={uri} />
+          <View style={styles.headerActions}>
+            <Pressable style={styles.headerBtn} onPress={pickFromFiles} hitSlop={10}>
+              <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
+            </Pressable>
+            <Pressable
+              style={[styles.headerBtn, styles.headerBtnPrimary]}
+              onPress={pickFromLibrary}
+              hitSlop={10}
+            >
+              <Ionicons name="add" size={22} color="#000" />
+            </Pressable>
+          </View>
         </View>
-      </View>
 
-      <ThumbStrip
-        uri={uri}
-        player={player}
-        duration={duration}
-        currentTime={currentTime}
-        onSeek={jumpToMarker}
-      />
-
-      <SpeedBar speed={speed} onChange={setSpeed} />
-
-      <MarkersBar
-        markers={sortedMarkers}
-        currentTime={currentTime}
-        onAdd={addMarker}
-        onJump={jumpToMarker}
-        onRemove={removeMarker}
-        onPrev={prevMarker}
-        onNext={nextMarker}
-        onClearAll={clearAllMarkers}
-      />
-
-      <View style={styles.controls}>
-        <View style={styles.jumpCluster}>
-          <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(-10)} hitSlop={8}>
-            <Text style={styles.jumpTxt}>−10</Text>
-          </Pressable>
-          <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(-5)} hitSlop={8}>
-            <Text style={styles.jumpTxt}>−5</Text>
-          </Pressable>
-          <Pressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(-1)} hitSlop={8}>
-            <Ionicons name="chevron-back" size={18} color="#fff" />
-            <Text style={styles.jumpTxtPrimary}>1</Text>
-          </Pressable>
-        </View>
-        <Pressable style={styles.playBtn} onPress={togglePlay} hitSlop={10}>
-          <Ionicons
-            name={player.playing ? "pause" : "play"}
-            size={30}
-            color="#000"
-            style={!player.playing && { marginLeft: 4 }}
+        {hasAny && (
+          <LibrarySearch
+            search={search}
+            onSearchChange={setSearch}
+            tags={allTags}
+            activeTag={activeTag}
+            onTagChange={setActiveTag}
           />
-        </Pressable>
-        <View style={styles.jumpCluster}>
-          <Pressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(1)} hitSlop={8}>
-            <Text style={styles.jumpTxtPrimary}>1</Text>
-            <Ionicons name="chevron-forward" size={18} color="#fff" />
-          </Pressable>
-          <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(5)} hitSlop={8}>
-            <Text style={styles.jumpTxt}>+5</Text>
-          </Pressable>
-          <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(10)} hitSlop={8}>
-            <Text style={styles.jumpTxt}>+10</Text>
-          </Pressable>
-        </View>
+        )}
       </View>
 
-      <Scrubber
-        duration={duration}
-        currentTime={currentTime}
-        onScrub={onScrub}
-        onScrubStart={onScrubStart}
-        onScrubEnd={onScrubEnd}
-      />
-     </View>
+      {!ready ? (
+        <View style={{ flex: 1 }} />
+      ) : items.length === 0 ? (
+        <EmptyState
+          searching={Boolean(search || activeTag)}
+          onLibrary={pickFromLibrary}
+          onFiles={pickFromFiles}
+        />
+      ) : (
+        <LibraryList
+          items={items}
+          onOpen={(rec) =>
+            router.push({ pathname: "/play/[id]", params: { id: rec.id } })
+          }
+          onRefresh={refresh}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
-function ImportScreen({
+function EmptyState({
+  searching,
   onLibrary,
   onFiles,
 }: {
+  searching: boolean;
   onLibrary: () => void;
   onFiles: () => void;
 }) {
+  if (searching) {
+    return (
+      <View style={styles.emptySearching}>
+        <Ionicons name="search" size={28} color="rgba(255,255,255,0.3)" />
+        <Text style={styles.emptyText}>No videos match.</Text>
+      </View>
+    );
+  }
   return (
-    <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
-      <View style={styles.importOuter}>
-        <View style={styles.importInner}>
-          <View style={styles.brandWrap}>
-            <BrandMark />
-            <Text style={styles.brand}>Scrub</Text>
-            <Text style={styles.tagline}>
-              Scrub any video down to a single frame. Drag, fling, mark.
+    <View style={styles.emptyOuter}>
+      <View style={styles.emptyInner}>
+        <BrandMark />
+        <Text style={styles.emptyTagline}>
+          Scrub any video down to a single frame. Drag, fling, mark.
+        </Text>
+        <View style={{ gap: 10, width: "100%" }}>
+          <BigButton
+            icon="videocam"
+            label="Pick from Photos"
+            subtitle="Recent recordings and saved clips"
+            onPress={onLibrary}
+            primary
+          />
+          <BigButton
+            icon="cloud-upload-outline"
+            label="Open from Files"
+            subtitle="On-device, iCloud, or Drive"
+            onPress={onFiles}
+          />
+          <View style={styles.hintCard}>
+            <Ionicons
+              name="information-circle-outline"
+              size={14}
+              color="rgba(255,255,255,0.45)"
+            />
+            <Text style={styles.hintTxt}>
+              {Platform.OS === "ios"
+                ? "Tip: Photos → Share → “Copy to Scrub”"
+                : Platform.OS === "android"
+                ? "Tip: share a video from any app to Scrub"
+                : "Tip: drag a video file anywhere on the window"}
             </Text>
-          </View>
-
-          <View style={{ gap: 10 }}>
-            <BigButton
-              icon="videocam"
-              label="Pick from Photos"
-              subtitle="Recent recordings and saved clips"
-              onPress={onLibrary}
-              primary
-            />
-            <BigButton
-              icon="cloud-upload-outline"
-              label="Open from Files"
-              subtitle="On-device, iCloud, or Drive"
-              onPress={onFiles}
-            />
-            <View style={styles.hintCard}>
-              <Ionicons name="information-circle-outline" size={14} color="rgba(255,255,255,0.45)" />
-              <Text style={styles.hintTxt}>
-                {Platform.OS === "ios"
-                  ? "Tip: Photos → Share → “Copy to Scrub”"
-                  : Platform.OS === "android"
-                  ? "Tip: share a video from any app to Scrub"
-                  : "Tip: drag a video file anywhere on the window"}
-              </Text>
-            </View>
           </View>
         </View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 function BrandMark() {
-  // Film-strip frames stacked behind a scrubber track + chunky thumb.
-  // Reads as "video" + "precise scrubbing" at a glance.
   return (
     <View style={styles.brandMark}>
       <View style={styles.brandGlowGroup} pointerEvents="none">
@@ -449,10 +283,7 @@ function BigButton({
       <View style={{ flex: 1 }}>
         <Text style={[styles.bigBtnLabel, primary && { color: "#000" }]}>{label}</Text>
         <Text
-          style={[
-            styles.bigBtnSubtitle,
-            primary && { color: "rgba(0,0,0,0.6)" },
-          ]}
+          style={[styles.bigBtnSubtitle, primary && { color: "rgba(0,0,0,0.6)" }]}
         >
           {subtitle}
         </Text>
@@ -468,156 +299,63 @@ function BigButton({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
-  editorContainer: {
-    flex: 1,
-    width: "100%",
-    maxWidth: 720,
-    alignSelf: "center",
-  },
-  topBar: {
+  header: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 6, gap: 12 },
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 6,
   },
-  iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  brand: { color: "#fff", fontSize: 28, fontWeight: "800", letterSpacing: -1 },
+  subtitle: { color: "rgba(255,255,255,0.5)", fontSize: 13, marginTop: 2 },
+  headerActions: { flexDirection: "row", gap: 8 },
+  headerBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
-  topTitle: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-    // @ts-ignore
-    userSelect: "none",
-  },
-  videoWrap: {
+  headerBtnPrimary: { backgroundColor: "#fff" },
+
+  emptySearching: {
     flex: 1,
-    backgroundColor: "#0a0a0a",
-    marginHorizontal: 12,
-    marginVertical: 6,
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  sourceOverlay: {
-    position: "absolute",
-    top: 8,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  loader: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
-  controls: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
   },
-  playBtn: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  jumpCluster: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  jumpBtn: {
-    minWidth: 38,
-    height: 38,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  jumpBtnPrimary: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    paddingHorizontal: 10,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  jumpTxt: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 13,
-    fontWeight: "700",
-    fontVariant: ["tabular-nums"],
-    // @ts-ignore
-    userSelect: "none",
-  },
-  jumpTxtPrimary: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "700",
-    fontVariant: ["tabular-nums"],
-    // @ts-ignore
-    userSelect: "none",
-  },
-
-  importOuter: {
+  emptyText: { color: "rgba(255,255,255,0.55)", fontSize: 14 },
+  emptyOuter: {
     flex: 1,
     paddingHorizontal: 22,
-    paddingVertical: 32,
     alignItems: "center",
     justifyContent: "center",
   },
-  importInner: {
+  emptyInner: {
     width: "100%",
     maxWidth: 460,
-    flex: 1,
-    justifyContent: "space-between",
-    paddingVertical: 24,
-  },
-  brandWrap: { alignItems: "center", marginTop: 20, gap: 16 },
-  brandMark: {
-    width: 220,
-    height: 96,
     alignItems: "center",
-    justifyContent: "center",
+    gap: 18,
   },
+  emptyTagline: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    paddingHorizontal: 10,
+  },
+
+  brandMark: { width: 220, height: 96, alignItems: "center", justifyContent: "center" },
   brandGlowGroup: {
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",
     top: -90,
   },
-  brandGlowRing: {
-    position: "absolute",
-    backgroundColor: "#ff3b30",
-  },
-  brandGlowOuter: {
-    width: 340,
-    height: 340,
-    borderRadius: 170,
-    opacity: 0.05,
-  },
-  brandGlowMid: {
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    opacity: 0.08,
-  },
-  brandGlowInner: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    opacity: 0.14,
-  },
+  brandGlowRing: { position: "absolute", backgroundColor: "#ff3b30" },
+  brandGlowOuter: { width: 340, height: 340, borderRadius: 170, opacity: 0.05 },
+  brandGlowMid: { width: 240, height: 240, borderRadius: 120, opacity: 0.08 },
+  brandGlowInner: { width: 140, height: 140, borderRadius: 70, opacity: 0.14 },
   brandFilmStrip: {
     flexDirection: "row",
     gap: 6,
@@ -665,26 +403,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.95)",
   },
-  brandThumbInner: {
-    width: 3,
-    height: 18,
-    borderRadius: 1.5,
-    backgroundColor: "#ff3b30",
-  },
-  brand: {
-    color: "#fff",
-    fontSize: 42,
-    fontWeight: "800",
-    letterSpacing: -1.5,
-  },
-  tagline: {
-    color: "rgba(255,255,255,0.55)",
-    fontSize: 14,
-    textAlign: "center",
-    paddingHorizontal: 20,
-    lineHeight: 20,
-    marginTop: -8,
-  },
+  brandThumbInner: { width: 3, height: 18, borderRadius: 1.5, backgroundColor: "#ff3b30" },
+
   bigBtn: {
     flexDirection: "row",
     alignItems: "center",
