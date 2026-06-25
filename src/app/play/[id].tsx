@@ -2,6 +2,7 @@ import { MarkersBar } from "@/components/markers-bar";
 import { Scrubber } from "@/components/scrubber";
 import { SourceChip } from "@/components/source-chip";
 import { SpeedBar } from "@/components/speed-bar";
+import { TagsEditor } from "@/components/tags-editor";
 import { ThumbStrip } from "@/components/thumb-strip";
 import { TitleEditor } from "@/components/title-editor";
 import { Timeline } from "@/components/timeline";
@@ -10,6 +11,7 @@ import {
   getVideo,
   setMarkers as dbSetMarkers,
   setPlaybackState,
+  setTags as dbSetTags,
   setTitle as dbSetTitle,
   touchVideo,
   type VideoRecord,
@@ -40,6 +42,7 @@ export default function PlayerScreen() {
   const [speed, setSpeed] = useState(1);
   const [markers, setMarkers] = useState<number[]>([]);
   const [title, setTitle] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const wasPlayingRef = useRef(false);
   const initialSeekRef = useRef<number | null>(null);
 
@@ -56,6 +59,7 @@ export default function PlayerScreen() {
       setRecord(r);
       setTitle(r.title);
       setMarkers(r.markers);
+      setTags(r.tags);
       initialSeekRef.current = r.lastTime;
       setHydrated(true);
       touchVideo(r.id).catch(() => {});
@@ -233,6 +237,14 @@ export default function PlayerScreen() {
 
   const sortedMarkers = useMemo(() => [...markers].sort((a, b) => a - b), [markers]);
 
+  const onChangeTags = useCallback(
+    (next: string[]) => {
+      setTags(next);
+      if (record) dbSetTags(record.id, next).catch(() => {});
+    },
+    [record]
+  );
+
   const onChangeTitle = useCallback(
     (next: string) => {
       const clean = next.trim() || "Untitled";
@@ -262,6 +274,8 @@ export default function PlayerScreen() {
           <TitleEditor value={title} onChange={onChangeTitle} />
           <View style={styles.iconBtn} />
         </View>
+
+        <TagsEditor tags={tags} onChange={onChangeTags} />
 
         <Timeline
           duration={duration}
