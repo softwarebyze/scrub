@@ -172,13 +172,21 @@ export default function Index() {
     else player.play();
   }, [player]);
 
-  const stepFrame = useCallback(
-    (dir: 1 | -1) => {
+  const jumpFrames = useCallback(
+    (frames: number) => {
       player.pause();
-      const t = Math.max(0, Math.min(duration, player.currentTime + dir * FRAME));
+      const t = Math.max(0, Math.min(duration, player.currentTime + frames * FRAME));
       player.currentTime = t;
       setCurrentTime(t);
-      if (Platform.OS !== "web") Haptics.selectionAsync();
+      if (Platform.OS !== "web") {
+        if (Math.abs(frames) >= 10) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        } else if (Math.abs(frames) >= 5) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        } else {
+          Haptics.selectionAsync();
+        }
+      }
     },
     [player, duration]
   );
@@ -289,10 +297,18 @@ export default function Index() {
       />
 
       <View style={styles.controls}>
-        <Pressable style={styles.frameBtn} onPress={() => stepFrame(-1)} hitSlop={10}>
-          <Ionicons name="play-back" size={22} color="#fff" />
-          <Text style={styles.frameTxt}>frame</Text>
-        </Pressable>
+        <View style={styles.jumpCluster}>
+          <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(-10)} hitSlop={8}>
+            <Text style={styles.jumpTxt}>−10</Text>
+          </Pressable>
+          <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(-5)} hitSlop={8}>
+            <Text style={styles.jumpTxt}>−5</Text>
+          </Pressable>
+          <Pressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(-1)} hitSlop={8}>
+            <Ionicons name="chevron-back" size={18} color="#fff" />
+            <Text style={styles.jumpTxtPrimary}>1</Text>
+          </Pressable>
+        </View>
         <Pressable style={styles.playBtn} onPress={togglePlay} hitSlop={10}>
           <Ionicons
             name={player.playing ? "pause" : "play"}
@@ -301,10 +317,18 @@ export default function Index() {
             style={!player.playing && { marginLeft: 4 }}
           />
         </Pressable>
-        <Pressable style={styles.frameBtn} onPress={() => stepFrame(1)} hitSlop={10}>
-          <Text style={styles.frameTxt}>frame</Text>
-          <Ionicons name="play-forward" size={22} color="#fff" />
-        </Pressable>
+        <View style={styles.jumpCluster}>
+          <Pressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(1)} hitSlop={8}>
+            <Text style={styles.jumpTxtPrimary}>1</Text>
+            <Ionicons name="chevron-forward" size={18} color="#fff" />
+          </Pressable>
+          <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(5)} hitSlop={8}>
+            <Text style={styles.jumpTxt}>+5</Text>
+          </Pressable>
+          <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(10)} hitSlop={8}>
+            <Text style={styles.jumpTxt}>+10</Text>
+          </Pressable>
+        </View>
       </View>
 
       <Scrubber
@@ -489,8 +513,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 16,
+    gap: 10,
     paddingVertical: 4,
+    paddingHorizontal: 8,
   },
   playBtn: {
     width: 60,
@@ -500,20 +525,43 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  frameBtn: {
+  jumpCluster: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.08)",
   },
-  frameTxt: {
+  jumpBtn: {
+    minWidth: 38,
+    height: 38,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  jumpBtnPrimary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingHorizontal: 10,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  jumpTxt: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 13,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+    // @ts-ignore
+    userSelect: "none",
+  },
+  jumpTxtPrimary: {
     color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-    // @ts-ignore — web-only, prevents text selection on click
+    fontSize: 13,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+    // @ts-ignore
     userSelect: "none",
   },
 
