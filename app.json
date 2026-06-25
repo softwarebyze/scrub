@@ -1,17 +1,17 @@
 {
   "expo": {
-    "icon": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efcf2-1a0e-736a-a4ff-ecc6f6435473/8cec8f7e-9bd9-45b6-bcde-b8d35fc7e65a",
+    "icon": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36",
     "orientation": "default",
     "scheme": "scrub",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#000000",
     "web": {
       "output": "server",
-      "favicon": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efcf2-1a0e-736a-a4ff-ecc6f6435473/8cec8f7e-9bd9-45b6-bcde-b8d35fc7e65a"
+      "favicon": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efcf2-1a0e-736a-a4ff-ecc6f6435473/8cec8f7e-9bd9-45b6-bcde-b8d35fc7e65a",
+        "foregroundImage": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36",
         "backgroundColor": "#000000"
       },
       "predictiveBackGestureEnabled": false,
@@ -92,10 +92,16 @@
       [
         "expo-splash-screen",
         {
-          "image": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efcf2-1a0e-736a-a4ff-ecc6f6435473/8cec8f7e-9bd9-45b6-bcde-b8d35fc7e65a",
+          "image": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36",
           "backgroundColor": "#000000",
-          "imageWidth": 200,
-          "resizeMode": "contain"
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "dark": {
+            "image": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36",
+            "backgroundColor": "#000000",
+            "imageWidth": 160,
+            "resizeMode": "contain"
+          }
         }
       ],
       "expo-status-bar"
