@@ -53,6 +53,21 @@ export default function PlayerScreen() {
     timer: null,
   });
 
+  // Mirrors of fast-changing state so stable callbacks/effects can read the
+  // latest values without re-running on every timeUpdate tick (~30ms).
+  const currentTimeRef = useRef(0);
+  const durationRef = useRef(0);
+  const speedRef = useRef(1);
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
+
   // Hydrate from DB once.
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +102,9 @@ export default function PlayerScreen() {
     const sub = player.addListener("statusChange", ({ status }) => {
       if (status === "readyToPlay") {
         setDuration(player.duration || 0);
-        player.playbackRate = speed;
+        try {
+          player.playbackRate = speedRef.current;
+        } catch {}
         // Resume from saved position once.
         if (initialSeekRef.current !== null && initialSeekRef.current > 0.05) {
           const seek = Math.min(initialSeekRef.current, (player.duration || 0) - 0.05);
@@ -100,7 +117,7 @@ export default function PlayerScreen() {
       }
     });
     return () => sub.remove();
-  }, [record, player, speed]);
+  }, [record, player]);
 
   useEffect(() => {
     if (!record) return;
@@ -117,28 +134,26 @@ export default function PlayerScreen() {
     return () => sub.remove();
   }, [record, player]);
 
-  // Persist lastTime + duration ~every 1.5s while not at zero.
+  // Periodic save + force-save on unmount. Reads latest values from refs so
+  // this effect doesn't re-subscribe on every timeUpdate tick — otherwise the
+  // interval gets reset before it can fire and the cleanup hammers storage.
   useEffect(() => {
     if (!record) return;
+    const id = record.id;
     const interval = setInterval(() => {
-      setPlaybackState(record.id, {
-        lastTime: currentTime,
-        duration: duration || undefined,
+      setPlaybackState(id, {
+        lastTime: currentTimeRef.current,
+        duration: durationRef.current || undefined,
       }).catch(() => {});
     }, 1500);
-    return () => clearInterval(interval);
-  }, [record, currentTime, duration]);
-
-  // Force-save on unmount.
-  useEffect(() => {
     return () => {
-      if (!record) return;
-      setPlaybackState(record.id, {
-        lastTime: currentTime,
-        duration: duration || undefined,
+      clearInterval(interval);
+      setPlaybackState(id, {
+        lastTime: currentTimeRef.current,
+        duration: durationRef.current || undefined,
       }).catch(() => {});
     };
-  }, [record, currentTime, duration]);
+  }, [record]);
 
   // Persist markers when they change.
   useEffect(() => {
@@ -183,7 +198,10 @@ export default function PlayerScreen() {
   const jumpFrames = useCallback(
     (frames: number) => {
       player.pause();
-      const t = Math.max(0, Math.min(duration, player.currentTime + frames * FRAME));
+      const t = Math.max(
+        0,
+        Math.min(durationRef.current, player.currentTime + frames * FRAME)
+      );
       player.currentTime = t;
       setCurrentTime(t);
       if (Platform.OS !== "web") {
@@ -210,24 +228,24 @@ export default function PlayerScreen() {
         accum.timer = null;
       }, 900);
     },
-    [player, duration]
+    [player]
   );
 
   const goBack = useCallback(() => {
     if (record) {
       setPlaybackState(record.id, {
-        lastTime: currentTime,
-        duration: duration || undefined,
+        lastTime: currentTimeRef.current,
+        duration: durationRef.current || undefined,
       }).catch(() => {});
     }
     if (router.canGoBack()) router.back();
     else router.replace("/");
-  }, [record, currentTime, duration]);
+  }, [record]);
 
   const addMarker = useCallback(() => {
+    const t = currentTimeRef.current;
     let added = false;
     setMarkers((prev) => {
-      const t = currentTime;
       if (prev.some((m) => Math.abs(m - t) < 0.01)) return prev;
       added = true;
       return [...prev, t].sort((a, b) => a - b);
@@ -235,7 +253,7 @@ export default function PlayerScreen() {
     if (Platform.OS !== "web")
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (added) toastRef.current?.show("Marker added");
-  }, [currentTime]);
+  }, []);
 
   const jumpToMarker = useCallback(
     (t: number) => {
@@ -269,16 +287,18 @@ export default function PlayerScreen() {
   }, []);
 
   const prevMarker = useCallback(() => {
-    const cands = markers.filter((m) => m < currentTime - 0.05);
+    const t = currentTimeRef.current;
+    const cands = markers.filter((m) => m < t - 0.05);
     if (!cands.length) return;
     jumpToMarker(cands[cands.length - 1]);
-  }, [markers, currentTime, jumpToMarker]);
+  }, [markers, jumpToMarker]);
 
   const nextMarker = useCallback(() => {
-    const cand = markers.find((m) => m > currentTime + 0.05);
+    const t = currentTimeRef.current;
+    const cand = markers.find((m) => m > t + 0.05);
     if (cand === undefined) return;
     jumpToMarker(cand);
-  }, [markers, currentTime, jumpToMarker]);
+  }, [markers, jumpToMarker]);
 
   const sortedMarkers = useMemo(() => [...markers].sort((a, b) => a - b), [markers]);
 
