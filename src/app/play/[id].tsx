@@ -48,6 +48,10 @@ export default function PlayerScreen() {
   const wasPlayingRef = useRef(false);
   const initialSeekRef = useRef<number | null>(null);
   const toastRef = useRef<ToastHandle>(null);
+  const jumpAccumRef = useRef<{ total: number; timer: ReturnType<typeof setTimeout> | null }>({
+    total: 0,
+    timer: null,
+  });
 
   // Hydrate from DB once.
   useEffect(() => {
@@ -191,9 +195,20 @@ export default function PlayerScreen() {
           Haptics.selectionAsync();
         }
       }
-      const dir = frames > 0 ? "ahead" : "back";
-      const n = Math.abs(frames);
+      const accum = jumpAccumRef.current;
+      // Reset accumulator if direction flipped.
+      if ((accum.total > 0 && frames < 0) || (accum.total < 0 && frames > 0)) {
+        accum.total = 0;
+      }
+      accum.total += frames;
+      const n = Math.abs(accum.total);
+      const dir = accum.total > 0 ? "ahead" : "back";
       toastRef.current?.show(`${n} frame${n === 1 ? "" : "s"} ${dir}`);
+      if (accum.timer) clearTimeout(accum.timer);
+      accum.timer = setTimeout(() => {
+        accum.total = 0;
+        accum.timer = null;
+      }, 900);
     },
     [player, duration]
   );

@@ -58,8 +58,8 @@ const styles = StyleSheet.create({
   layer: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
-    justifyContent: "flex-end",
-    paddingBottom: 240,
+    justifyContent: "flex-start",
+    paddingTop: 70,
   },
   pill: {
     paddingHorizontal: 14,
