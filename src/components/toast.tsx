@@ -22,12 +22,12 @@ export const Toast = forwardRef<ToastHandle, {}>(function Toast(_props, ref) {
       setMsg(next);
       cancelAnimation(opacity);
       cancelAnimation(offset);
-      opacity.value = withTiming(1, { duration: 110 });
-      offset.value = withTiming(0, { duration: 160 });
+      opacity.set(withTiming(1, { duration: 110 }));
+      offset.set(withTiming(0, { duration: 160 }));
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
-        opacity.value = withTiming(0, { duration: 220 });
-        offset.value = withTiming(6, { duration: 220 });
+        opacity.set(withTiming(0, { duration: 220 }));
+        offset.set(withTiming(6, { duration: 220 }));
       }, 1100);
     },
   }));
@@ -39,8 +39,8 @@ export const Toast = forwardRef<ToastHandle, {}>(function Toast(_props, ref) {
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: offset.value }],
+    opacity: opacity.get(),
+    transform: [{ translateY: offset.get() }],
   }));
 
   if (!msg) return null;

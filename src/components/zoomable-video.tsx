@@ -27,8 +27,8 @@ function ZoomableVideoInner({ player }: Props) {
 
   const clampTranslate = (s: number, x: number, y: number) => {
     "worklet";
-    const maxX = ((s - 1) * w.value) / 2;
-    const maxY = ((s - 1) * h.value) / 2;
+    const maxX = ((s - 1) * w.get()) / 2;
+    const maxY = ((s - 1) * h.get()) / 2;
     return {
       x: Math.max(-maxX, Math.min(maxX, x)),
       y: Math.max(-maxY, Math.min(maxY, y)),
@@ -37,32 +37,32 @@ function ZoomableVideoInner({ player }: Props) {
 
   const resetZoom = () => {
     "worklet";
-    scale.value = withTiming(1);
-    tx.value = withTiming(0);
-    ty.value = withTiming(0);
-    savedScale.value = 1;
-    savedTx.value = 0;
-    savedTy.value = 0;
+    scale.set(withTiming(1));
+    tx.set(withTiming(0));
+    ty.set(withTiming(0));
+    savedScale.set(1);
+    savedTx.set(0);
+    savedTy.set(0);
   };
 
   const pinch = Gesture.Pinch()
     .onStart(() => {
-      savedScale.value = scale.value;
-      savedTx.value = tx.value;
-      savedTy.value = ty.value;
+      savedScale.set(scale.get());
+      savedTx.set(tx.get());
+      savedTy.set(ty.get());
     })
     .onUpdate((e) => {
-      const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, savedScale.value * e.scale));
-      scale.value = next;
-      const c = clampTranslate(next, tx.value, ty.value);
-      tx.value = c.x;
-      ty.value = c.y;
+      const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, savedScale.get() * e.scale));
+      scale.set(next);
+      const c = clampTranslate(next, tx.get(), ty.get());
+      tx.set(c.x);
+      ty.set(c.y);
     })
     .onEnd(() => {
-      savedScale.value = scale.value;
-      savedTx.value = tx.value;
-      savedTy.value = ty.value;
-      if (scale.value <= 1.02) resetZoom();
+      savedScale.set(scale.get());
+      savedTx.set(tx.get());
+      savedTy.set(ty.get());
+      if (scale.get() <= 1.02) resetZoom();
     });
 
   // Two-finger pan — always works.
@@ -70,21 +70,21 @@ function ZoomableVideoInner({ player }: Props) {
     .minPointers(2)
     .maxPointers(2)
     .onStart(() => {
-      savedTx.value = tx.value;
-      savedTy.value = ty.value;
+      savedTx.set(tx.get());
+      savedTy.set(ty.get());
     })
     .onUpdate((e) => {
       const c = clampTranslate(
-        scale.value,
-        savedTx.value + e.translationX,
-        savedTy.value + e.translationY
+        scale.get(),
+        savedTx.get() + e.translationX,
+        savedTy.get() + e.translationY
       );
-      tx.value = c.x;
-      ty.value = c.y;
+      tx.set(c.x);
+      ty.set(c.y);
     })
     .onEnd(() => {
-      savedTx.value = tx.value;
-      savedTy.value = ty.value;
+      savedTx.set(tx.get());
+      savedTy.set(ty.get());
     });
 
   // Single-finger pan — only active when zoomed in. Won't conflict with double-tap.
@@ -94,33 +94,33 @@ function ZoomableVideoInner({ player }: Props) {
     .minDistance(2)
     .enabled(true)
     .onStart(() => {
-      savedTx.value = tx.value;
-      savedTy.value = ty.value;
+      savedTx.set(tx.get());
+      savedTy.set(ty.get());
     })
     .onUpdate((e) => {
-      if (scale.value <= 1.02) return;
+      if (scale.get() <= 1.02) return;
       const c = clampTranslate(
-        scale.value,
-        savedTx.value + e.translationX,
-        savedTy.value + e.translationY
+        scale.get(),
+        savedTx.get() + e.translationX,
+        savedTy.get() + e.translationY
       );
-      tx.value = c.x;
-      ty.value = c.y;
+      tx.set(c.x);
+      ty.set(c.y);
     })
     .onEnd(() => {
-      savedTx.value = tx.value;
-      savedTy.value = ty.value;
+      savedTx.set(tx.get());
+      savedTy.set(ty.get());
     });
 
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
     .maxDuration(280)
     .onEnd(() => {
-      if (scale.value > 1.05) {
+      if (scale.get() > 1.05) {
         resetZoom();
       } else {
-        scale.value = withTiming(2.5);
-        savedScale.value = 2.5;
+        scale.set(withTiming(2.5));
+        savedScale.set(2.5);
       }
     });
 
@@ -133,9 +133,9 @@ function ZoomableVideoInner({ player }: Props) {
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: tx.value },
-      { translateY: ty.value },
-      { scale: scale.value },
+      { translateX: tx.get() },
+      { translateY: ty.get() },
+      { scale: scale.get() },
     ],
   }));
 
@@ -144,8 +144,8 @@ function ZoomableVideoInner({ player }: Props) {
       <View
         style={styles.wrap}
         onLayout={(e) => {
-          w.value = e.nativeEvent.layout.width;
-          h.value = e.nativeEvent.layout.height;
+          w.set(e.nativeEvent.layout.width);
+          h.set(e.nativeEvent.layout.height);
         }}
       >
         <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>

@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -93,24 +93,24 @@ export function Scrubber({
     if (scrubbing) return;
     if (Date.now() - lastInteractionEnd.current < 250) return;
     setDisplayTime(currentTime);
-    headTime.value = currentTime;
+    headTime.set(currentTime);
   }, [currentTime, scrubbing, headTime]);
 
   // During interaction: throttle seek pushes, fire tick + edge haptics.
   useAnimatedReaction(
-    () => headTime.value,
+    () => headTime.get(),
     (t, prev) => {
       if (prev === null || prev === undefined) return;
-      if (!isInteracting.value) return;
+      if (!isInteracting.get()) return;
       runOnJS(setDisplayTime)(t);
       const now = Date.now();
-      if (now - lastSeekMs.value >= 30) {
-        lastSeekMs.value = now;
+      if (now - lastSeekMs.get() >= 30) {
+        lastSeekMs.set(now);
         runOnJS(onScrub)(t);
       }
       // Haptic detents: bucket size depends on precision mode so finer modes
       // tick more often — gives the wheel a real "geared" feel.
-      const m = lastMode.value;
+      const m = lastMode.get();
       const bucketSec =
         m === 0
           ? layout.majorStepSec
@@ -120,52 +120,56 @@ export function Scrubber({
           ? layout.tickStepSec
           : 1 / 30;
       const bucket = Math.floor(t / Math.max(0.01, bucketSec));
-      if (bucket !== lastTickBucket.value) {
-        lastTickBucket.value = bucket;
-        if (now - lastTickMs.value >= 22) {
-          lastTickMs.value = now;
+      if (bucket !== lastTickBucket.get()) {
+        lastTickBucket.set(bucket);
+        if (now - lastTickMs.get() >= 22) {
+          lastTickMs.set(now);
           runOnJS(tickHaptic)();
         }
       }
       let edge: 0 | 1 | -1 = 0;
       if (t <= 0.001) edge = -1;
       else if (duration > 0 && t >= duration - 0.001) edge = 1;
-      if (edge !== 0 && edge !== edgeState.value) {
-        edgeState.value = edge;
+      if (edge !== 0 && edge !== edgeState.get()) {
+        edgeState.set(edge);
         runOnJS(edgeHaptic)();
-      } else if (edge === 0 && edgeState.value !== 0) {
-        edgeState.value = 0;
+      } else if (edge === 0 && edgeState.get() !== 0) {
+        edgeState.set(0);
       }
     }
   );
 
-  const setModeJs = (m: number) => {
+  const setModeJs = useCallback((m: number) => {
     setMode(m);
     modeHaptic();
-  };
-  function setScrubbingJs(v: boolean) {
-    setScrubbing(v);
-  }
+  }, []);
 
-  const finishScrub = (finalTime: number) => {
-    onScrub(finalTime);
-    lastInteractionEnd.current = Date.now();
-    setScrubbing(false);
-    setMode(0);
-    onScrubEnd();
-  };
+  const setScrubbingJs = useCallback((v: boolean) => {
+    setScrubbing(v);
+  }, []);
+
+  const finishScrub = useCallback(
+    (finalTime: number) => {
+      onScrub(finalTime);
+      lastInteractionEnd.current = Date.now();
+      setScrubbing(false);
+      setMode(0);
+      onScrubEnd();
+    },
+    [onScrub, onScrubEnd]
+  );
 
   const pan = Gesture.Pan()
     .minDistance(0)
     .onBegin(() => {
       cancelAnimation(headTime);
-      isInteracting.value = true;
-      lastSeekMs.value = 0;
-      lastTickBucket.value = Math.floor(
-        headTime.value / Math.max(0.01, layout.majorStepSec)
+      isInteracting.set(true);
+      lastSeekMs.set(0);
+      lastTickBucket.set(
+        Math.floor(headTime.get() / Math.max(0.01, layout.majorStepSec))
       );
-      lastTickMs.value = 0;
-      edgeState.value = 0;
+      lastTickMs.set(0);
+      edgeState.set(0);
       runOnJS(setScrubbingJs)(true);
       runOnJS(onScrubStart)();
     })
@@ -174,49 +178,51 @@ export function Scrubber({
       // 1× covers the top ~60% so casual spins feel direct.
       const speed = dy > 140 ? 0.05 : dy > 100 ? 0.25 : dy > 70 ? 0.5 : 1;
       const m = speed === 1 ? 0 : speed === 0.5 ? 1 : speed === 0.25 ? 2 : 3;
-      if (m !== lastMode.value) {
-        lastMode.value = m;
+      if (m !== lastMode.get()) {
+        lastMode.set(m);
         runOnJS(setModeJs)(m);
       }
       // Wheel mapping: dragging the wheel LEFT pulls future ticks past the
       // playhead, i.e. time increases. dt = -changeX / pxPerSec * speed.
       const dt = (-e.changeX / layout.pxPerSec) * speed;
-      headTime.value = Math.max(0, Math.min(duration, headTime.value + dt));
+      headTime.set(Math.max(0, Math.min(duration, headTime.get() + dt)));
     })
     .onEnd((e) => {
       const dy = Math.max(0, e.y);
       const speed = dy > 140 ? 0.05 : dy > 100 ? 0.25 : dy > 70 ? 0.5 : 1;
       const v = (-e.velocityX / layout.pxPerSec) * speed;
       if (Math.abs(v) < 0.5) {
-        isInteracting.value = false;
-        lastMode.value = 0;
-        runOnJS(finishScrub)(headTime.value);
+        isInteracting.set(false);
+        lastMode.set(0);
+        runOnJS(finishScrub)(headTime.get());
         return;
       }
-      headTime.value = withDecay(
-        { velocity: v, clamp: [0, duration], deceleration: 0.998 },
-        (finished) => {
-          if (!finished) return;
-          isInteracting.value = false;
-          lastMode.value = 0;
-          runOnJS(finishScrub)(headTime.value);
-        }
+      headTime.set(
+        withDecay(
+          { velocity: v, clamp: [0, duration], deceleration: 0.998 },
+          (finished) => {
+            if (!finished) return;
+            isInteracting.set(false);
+            lastMode.set(0);
+            runOnJS(finishScrub)(headTime.get());
+          }
+        )
       );
     })
     .onFinalize((_e, success) => {
       if (!success) {
         cancelAnimation(headTime);
-        isInteracting.value = false;
-        lastMode.value = 0;
-        runOnJS(finishScrub)(headTime.value);
+        isInteracting.set(false);
+        lastMode.set(0);
+        runOnJS(finishScrub)(headTime.get());
       }
     });
 
   // The tick strip translates so headTime aligns with the playhead at center.
   const stripStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: trackW / 2 - headTime.value * layout.pxPerSec },
-      { scaleY: withSpring(isInteracting.value ? 1.03 : 1, { damping: 14 }) },
+      { translateX: trackW / 2 - headTime.get() * layout.pxPerSec },
+      { scaleY: withSpring(isInteracting.get() ? 1.03 : 1, { damping: 14 }) },
     ],
   }));
 
