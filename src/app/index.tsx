@@ -237,9 +237,11 @@ function BrandMark() {
           <View key={i} style={styles.brandFrame} />
         ))}
       </View>
-      <View style={styles.brandTrack} />
-      <View style={styles.brandThumb}>
-        <View style={styles.brandThumbInner} />
+      <View style={styles.brandTrackRow}>
+        <View style={styles.brandTrack} />
+        <View style={styles.brandThumb}>
+          <View style={styles.brandThumbInner} />
+        </View>
       </View>
     </View>
   );
@@ -340,11 +342,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
 
-  brandMark: { width: 220, height: 96, alignItems: "center", justifyContent: "center" },
+  brandMark: { width: 240, alignItems: "center", gap: 14 },
   brandFilmStrip: {
     flexDirection: "row",
     gap: 6,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
     paddingVertical: 6,
     borderRadius: 6,
     backgroundColor: "rgba(255,255,255,0.05)",
@@ -359,11 +361,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
   },
+  brandTrackRow: {
+    width: 200,
+    height: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   brandTrack: {
-    position: "absolute",
-    left: 0,
-    right: 0,
+    width: "100%",
     height: 3,
+    borderRadius: 2,
     backgroundColor: "#ff3b30",
     shadowColor: "#ff3b30",
     shadowOpacity: 0.7,
@@ -373,10 +380,10 @@ const styles = StyleSheet.create({
   brandThumb: {
     position: "absolute",
     left: "62%",
-    marginLeft: -22,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    marginLeft: -18,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
@@ -388,7 +395,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.95)",
   },
-  brandThumbInner: { width: 3, height: 18, borderRadius: 1.5, backgroundColor: "#ff3b30" },
+  brandThumbInner: { width: 3, height: 14, borderRadius: 1.5, backgroundColor: "#ff3b30" },
 
   bigBtn: {
     flexDirection: "row",

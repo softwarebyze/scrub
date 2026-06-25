@@ -33,31 +33,34 @@ export function SpeedBar({ speed, onChange }: Props) {
 
   return (
     <View style={styles.wrap}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.row}
-      >
-        {PRESETS.map((p) => {
-          const active = p === speed;
-          return (
-            <Pressable
-              key={p}
-              onPress={() => onChange(p)}
-              style={[styles.pill, active && styles.pillActive]}
-            >
-              <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                {p}×
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.bar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.row}
+          style={styles.scroll}
+        >
+          {PRESETS.map((p) => {
+            const active = p === speed;
+            return (
+              <Pressable
+                key={p}
+                onPress={() => onChange(p)}
+                style={[styles.pill, active && styles.pillActive]}
+              >
+                <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                  {p}×
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
         <Pressable
           onPress={() => {
             setCustomInput(isPreset ? "" : String(speed));
             setCustomOpen(true);
           }}
-          style={[styles.pill, !isPreset && styles.pillActive]}
+          style={[styles.pill, styles.customPill, !isPreset && styles.pillActive]}
         >
           <Ionicons
             name="create-outline"
@@ -68,7 +71,7 @@ export function SpeedBar({ speed, onChange }: Props) {
             {isPreset ? "custom" : `${speed}×`}
           </Text>
         </Pressable>
-      </ScrollView>
+      </View>
 
       <Modal
         transparent
@@ -114,7 +117,10 @@ export function SpeedBar({ speed, onChange }: Props) {
 
 const styles = StyleSheet.create({
   wrap: { paddingVertical: 4 },
-  row: { gap: 6, paddingHorizontal: 16, alignItems: "center" },
+  bar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, gap: 6 },
+  scroll: { flex: 1 },
+  row: { gap: 6, alignItems: "center", paddingRight: 6 },
+  customPill: { flexShrink: 0 },
   pill: {
     flexDirection: "row",
     alignItems: "center",
