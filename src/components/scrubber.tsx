@@ -20,8 +20,9 @@ type Props = {
   onScrubEnd: () => void;
 };
 
-const TRACK_HEIGHT = 110;
+const TRACK_HEIGHT = 120;
 const TICK_COUNT = 60;
+const KNOB_SIZE = 76;
 const MODE_LABELS = ["1× full", "½ half", "¼ fine", "1/20 frame"];
 
 function fmt(t: number) {
@@ -150,12 +151,15 @@ export function Scrubber({
 
   const pan = Gesture.Pan()
     .minDistance(0)
-    .onBegin(() => {
+    .onBegin((e) => {
       cancelAnimation(headX);
       isInteracting.value = true;
       lastSeekMs.value = 0;
-      // Seed buckets so the first tick after touchdown doesn't fire spuriously.
+      // Jump head to wherever the finger lands — the whole track is a big
+      // control. Refinement happens via the relative drag + vertical modes
+      // below. This is what makes the scrubber stop feeling like a needle.
       const w = Math.max(1, width.value);
+      headX.value = Math.max(0, Math.min(w, e.x));
       const t0 = (headX.value / w) * duration;
       lastTickBucket.value = Math.floor(t0 / 1.0);
       lastTickMs.value = 0;
@@ -164,8 +168,11 @@ export function Scrubber({
       runOnJS(onScrubStart)();
     })
     .onChange((e) => {
+      // Vertical = precision. The 1× zone now covers the top ~60% of the
+      // track (was ~25%) so casual drags feel direct, and the user has to
+      // commit downward to switch into a finer mode.
       const dy = Math.max(0, e.y);
-      const speed = dy > 120 ? 0.05 : dy > 70 ? 0.25 : dy > 30 ? 0.5 : 1;
+      const speed = dy > 140 ? 0.05 : dy > 100 ? 0.25 : dy > 70 ? 0.5 : 1;
       const m = speed === 1 ? 0 : speed === 0.5 ? 1 : speed === 0.25 ? 2 : 3;
       if (m !== lastMode.value) {
         lastMode.value = m;
@@ -175,8 +182,11 @@ export function Scrubber({
       headX.value = Math.max(0, Math.min(width.value, next));
     })
     .onEnd((e) => {
+      // Vertical = precision. The 1× zone now covers the top ~60% of the
+      // track (was ~25%) so casual drags feel direct, and the user has to
+      // commit downward to switch into a finer mode.
       const dy = Math.max(0, e.y);
-      const speed = dy > 120 ? 0.05 : dy > 70 ? 0.25 : dy > 30 ? 0.5 : 1;
+      const speed = dy > 140 ? 0.05 : dy > 100 ? 0.25 : dy > 70 ? 0.5 : 1;
       const v = e.velocityX * speed;
       // Skip decay on tiny flicks — feels like jitter otherwise.
       if (Math.abs(v) < 40) {
@@ -223,8 +233,8 @@ export function Scrubber({
 
   const knobStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: headX.value - 28 },
-      { scale: withSpring(isInteracting.value ? 1.08 : 1, { damping: 14 }) },
+      { translateX: headX.value - KNOB_SIZE / 2 },
+      { scale: withSpring(isInteracting.value ? 1.1 : 1, { damping: 14 }) },
     ],
   }));
 
@@ -279,7 +289,7 @@ export function Scrubber({
       </GestureDetector>
 
       <View style={styles.bottomRow}>
-        <Text style={styles.hint}>drag relative • flick to fling • down = finer</Text>
+        <Text style={styles.hint}>tap anywhere · drag to refine · slide down = finer</Text>
       </View>
     </View>
   );
@@ -360,23 +370,25 @@ const styles = StyleSheet.create({
   },
   knob: {
     position: "absolute",
-    top: TRACK_HEIGHT / 2 - 28,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    top: TRACK_HEIGHT / 2 - KNOB_SIZE / 2,
+    width: KNOB_SIZE,
+    height: KNOB_SIZE,
+    borderRadius: KNOB_SIZE / 2,
     backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    shadowColor: "#ff3b30",
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 10,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
   },
   knobInner: {
-    width: 4,
-    height: 26,
-    borderRadius: 2,
+    width: 5,
+    height: 34,
+    borderRadius: 2.5,
     backgroundColor: "#ff3b30",
   },
   bottomRow: {
