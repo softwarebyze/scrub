@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -20,9 +20,12 @@ type Props = {
   onScrubEnd: () => void;
 };
 
-const TRACK_HEIGHT = 120;
-const TICK_COUNT = 60;
-const KNOB_SIZE = 76;
+const HEIGHT = 112;
+const TICK_PX = 10;
+// Cap on total strip width so we don't render tens of thousands of ticks
+// for a long video. Drag feel adjusts via the down-finer modes instead.
+const TARGET_STRIP_PX = 5200;
+const MAX_TICKS = 800;
 const MODE_LABELS = ["1× full", "½ half", "¼ fine", "1/20 frame"];
 
 function fmt(t: number) {
@@ -36,15 +39,18 @@ function fmt(t: number) {
 function tickHaptic() {
   if (Platform.OS !== "web") Haptics.selectionAsync();
 }
-
 function edgeHaptic() {
-  if (Platform.OS !== "web")
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+  if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+}
+function modeHaptic() {
+  if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
 }
 
-function modeHaptic() {
-  if (Platform.OS !== "web")
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+function niceMajorStep(tickStepSec: number) {
+  // Major tick every "nice" interval, at least every 4 minor ticks.
+  const candidates = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800];
+  for (const c of candidates) if (c / tickStepSec >= 4) return c;
+  return 1800;
 }
 
 export function Scrubber({
@@ -54,78 +60,76 @@ export function Scrubber({
   onScrubStart,
   onScrubEnd,
 }: Props) {
-  const width = useSharedValue(0);
-  // isInteracting: user finger down OR decay still animating.
+  // Virtual head time. Source of truth during interaction; mirrors
+  // `currentTime` while idle.
+  const headTime = useSharedValue(currentTime);
   const isInteracting = useSharedValue(false);
-  const headX = useSharedValue(0);
   const lastSeekMs = useSharedValue(0);
-  // Tracks the last "tick bucket" the head was in, for haptic emission as it
-  // crosses time-based boundaries during drag.
-  const lastTickBucket = useSharedValue(-1);
+  const lastTickBucket = useSharedValue(0);
   const lastTickMs = useSharedValue(0);
-  // Edge state: -1 = at left, 1 = at right, 0 = middle. Used to fire one
-  // sharper haptic per edge contact, not continuously.
   const edgeState = useSharedValue(0);
+  const lastMode = useSharedValue(0);
+
   const [scrubbing, setScrubbing] = useState(false);
   const [displayTime, setDisplayTime] = useState(currentTime);
   const [mode, setMode] = useState(0);
-  const lastMode = useSharedValue(0);
-  // Refractory period to avoid the post-scrub snap-back caused by lagging player.
+  const [trackW, setTrackW] = useState(0);
   const lastInteractionEnd = useRef(0);
 
-  // Sync displayTime to incoming currentTime when NOT scrubbing/flinging
-  // and outside a small refractory window.
+  const layout = useMemo(() => {
+    if (!duration || duration < 0.05) {
+      return { pxPerSec: 80, tickStepSec: 10 / 80, majorStepSec: 1, stripPx: 0, tickCount: 0 };
+    }
+    const pxPerSec = Math.min(140, TARGET_STRIP_PX / duration);
+    const tickStepSec = TICK_PX / pxPerSec;
+    const majorStepSec = niceMajorStep(tickStepSec);
+    const stripPx = duration * pxPerSec;
+    const tickCount = Math.min(MAX_TICKS, Math.ceil(stripPx / TICK_PX) + 1);
+    return { pxPerSec, tickStepSec, majorStepSec, stripPx, tickCount };
+  }, [duration]);
+
+  // Sync external currentTime → headTime while idle.
   useEffect(() => {
     if (scrubbing) return;
     if (Date.now() - lastInteractionEnd.current < 250) return;
     setDisplayTime(currentTime);
-  }, [currentTime, scrubbing]);
+    headTime.value = currentTime;
+  }, [currentTime, scrubbing, headTime]);
 
-  // Sync headX to incoming currentTime ONLY when fully idle. No withTiming —
-  // the animation was the source of the "drift" feel after release.
-  useEffect(() => {
-    if (scrubbing) return;
-    if (Date.now() - lastInteractionEnd.current < 250) return;
-    if (width.value === 0 || duration === 0) return;
-    const target = (currentTime / duration) * width.value;
-    if (Math.abs(target - headX.value) > 0.5) {
-      headX.value = target;
-    }
-  }, [currentTime, duration, scrubbing]);
-
-  // Throttled push of headX changes (during drag + decay) back to player.
-  // Limits seeks to ~33Hz so the native seek can keep up during a fast fling.
+  // During interaction: throttle seek pushes, fire tick + edge haptics.
   useAnimatedReaction(
-    () => headX.value,
-    (x, prev) => {
+    () => headTime.value,
+    (t, prev) => {
       if (prev === null || prev === undefined) return;
       if (!isInteracting.value) return;
-      const w = Math.max(1, width.value);
-      const t = (x / w) * duration;
       runOnJS(setDisplayTime)(t);
       const now = Date.now();
       if (now - lastSeekMs.value >= 30) {
         lastSeekMs.value = now;
         runOnJS(onScrub)(t);
       }
-      // Tick haptics: emit a selection click each time the head crosses a
-      // time bucket boundary. Bucket size shrinks with finer scrub mode so
-      // frame-mode feels like a notched ratchet.
+      // Haptic detents: bucket size depends on precision mode so finer modes
+      // tick more often — gives the wheel a real "geared" feel.
       const m = lastMode.value;
-      const bucketSec = m === 0 ? 1.0 : m === 1 ? 0.5 : m === 2 ? 0.1 : 1 / 30;
-      const bucket = Math.floor(t / bucketSec);
+      const bucketSec =
+        m === 0
+          ? layout.majorStepSec
+          : m === 1
+          ? Math.max(layout.tickStepSec, layout.majorStepSec / 2)
+          : m === 2
+          ? layout.tickStepSec
+          : 1 / 30;
+      const bucket = Math.floor(t / Math.max(0.01, bucketSec));
       if (bucket !== lastTickBucket.value) {
         lastTickBucket.value = bucket;
-        // Rate-limit so a flick doesn't machine-gun the taptic engine.
         if (now - lastTickMs.value >= 22) {
           lastTickMs.value = now;
           runOnJS(tickHaptic)();
         }
       }
-      // Edge haptics: fire once when the head hits 0 or width.
       let edge: 0 | 1 | -1 = 0;
-      if (x <= 0.5) edge = -1;
-      else if (x >= w - 0.5) edge = 1;
+      if (t <= 0.001) edge = -1;
+      else if (duration > 0 && t >= duration - 0.001) edge = 1;
       if (edge !== 0 && edge !== edgeState.value) {
         edgeState.value = edge;
         runOnJS(edgeHaptic)();
@@ -139,9 +143,11 @@ export function Scrubber({
     setMode(m);
     modeHaptic();
   };
+  function setScrubbingJs(v: boolean) {
+    setScrubbing(v);
+  }
 
   const finishScrub = (finalTime: number) => {
-    // Final precise seek so player & UI converge exactly.
     onScrub(finalTime);
     lastInteractionEnd.current = Date.now();
     setScrubbing(false);
@@ -151,96 +157,70 @@ export function Scrubber({
 
   const pan = Gesture.Pan()
     .minDistance(0)
-    .onBegin((e) => {
-      cancelAnimation(headX);
+    .onBegin(() => {
+      cancelAnimation(headTime);
       isInteracting.value = true;
       lastSeekMs.value = 0;
-      // Jump head to wherever the finger lands — the whole track is a big
-      // control. Refinement happens via the relative drag + vertical modes
-      // below. This is what makes the scrubber stop feeling like a needle.
-      const w = Math.max(1, width.value);
-      headX.value = Math.max(0, Math.min(w, e.x));
-      const t0 = (headX.value / w) * duration;
-      lastTickBucket.value = Math.floor(t0 / 1.0);
+      lastTickBucket.value = Math.floor(
+        headTime.value / Math.max(0.01, layout.majorStepSec)
+      );
       lastTickMs.value = 0;
       edgeState.value = 0;
       runOnJS(setScrubbingJs)(true);
       runOnJS(onScrubStart)();
     })
     .onChange((e) => {
-      // Vertical = precision. The 1× zone now covers the top ~60% of the
-      // track (was ~25%) so casual drags feel direct, and the user has to
-      // commit downward to switch into a finer mode.
       const dy = Math.max(0, e.y);
+      // 1× covers the top ~60% so casual spins feel direct.
       const speed = dy > 140 ? 0.05 : dy > 100 ? 0.25 : dy > 70 ? 0.5 : 1;
       const m = speed === 1 ? 0 : speed === 0.5 ? 1 : speed === 0.25 ? 2 : 3;
       if (m !== lastMode.value) {
         lastMode.value = m;
         runOnJS(setModeJs)(m);
       }
-      const next = headX.value + e.changeX * speed;
-      headX.value = Math.max(0, Math.min(width.value, next));
+      // Wheel mapping: dragging the wheel LEFT pulls future ticks past the
+      // playhead, i.e. time increases. dt = -changeX / pxPerSec * speed.
+      const dt = (-e.changeX / layout.pxPerSec) * speed;
+      headTime.value = Math.max(0, Math.min(duration, headTime.value + dt));
     })
     .onEnd((e) => {
-      // Vertical = precision. The 1× zone now covers the top ~60% of the
-      // track (was ~25%) so casual drags feel direct, and the user has to
-      // commit downward to switch into a finer mode.
       const dy = Math.max(0, e.y);
       const speed = dy > 140 ? 0.05 : dy > 100 ? 0.25 : dy > 70 ? 0.5 : 1;
-      const v = e.velocityX * speed;
-      // Skip decay on tiny flicks — feels like jitter otherwise.
-      if (Math.abs(v) < 40) {
+      const v = (-e.velocityX / layout.pxPerSec) * speed;
+      if (Math.abs(v) < 0.5) {
         isInteracting.value = false;
         lastMode.value = 0;
-        const w = Math.max(1, width.value);
-        const t = (headX.value / w) * duration;
-        runOnJS(finishScrub)(t);
+        runOnJS(finishScrub)(headTime.value);
         return;
       }
-      headX.value = withDecay(
-        {
-          velocity: v,
-          clamp: [0, width.value],
-          deceleration: 0.996,
-        },
+      headTime.value = withDecay(
+        { velocity: v, clamp: [0, duration], deceleration: 0.998 },
         (finished) => {
           if (!finished) return;
           isInteracting.value = false;
           lastMode.value = 0;
-          const w = Math.max(1, width.value);
-          const t = (headX.value / w) * duration;
-          runOnJS(finishScrub)(t);
+          runOnJS(finishScrub)(headTime.value);
         }
       );
     })
     .onFinalize((_e, success) => {
       if (!success) {
-        cancelAnimation(headX);
+        cancelAnimation(headTime);
         isInteracting.value = false;
         lastMode.value = 0;
-        const w = Math.max(1, width.value);
-        const t = (headX.value / w) * duration;
-        runOnJS(finishScrub)(t);
+        runOnJS(finishScrub)(headTime.value);
       }
     });
 
-  const headStyle = useAnimatedStyle(() => ({
+  // The tick strip translates so headTime aligns with the playhead at center.
+  const stripStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: headX.value - 2 },
-      { scaleY: withSpring(isInteracting.value ? 1.15 : 1, { damping: 14 }) },
+      { translateX: trackW / 2 - headTime.value * layout.pxPerSec },
+      { scaleY: withSpring(isInteracting.value ? 1.03 : 1, { damping: 14 }) },
     ],
   }));
 
-  const knobStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: headX.value - KNOB_SIZE / 2 },
-      { scale: withSpring(isInteracting.value ? 1.1 : 1, { damping: 14 }) },
-    ],
-  }));
-
-  function setScrubbingJs(v: boolean) {
-    setScrubbing(v);
-  }
+  const majorEveryN = Math.max(1, Math.round(layout.majorStepSec / Math.max(0.0001, layout.tickStepSec)));
 
   return (
     <View style={styles.wrap}>
@@ -266,47 +246,46 @@ export function Scrubber({
       <GestureDetector gesture={pan}>
         <View
           style={styles.track}
-          onLayout={(e) => {
-            width.value = e.nativeEvent.layout.width;
-            if (duration > 0) {
-              headX.value = (currentTime / duration) * e.nativeEvent.layout.width;
-            }
-          }}
+          onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
         >
-          <View style={styles.ticks} pointerEvents="none">
-            {Array.from({ length: TICK_COUNT }).map((_, i) => (
-              <View
-                key={i}
-                style={[styles.tick, i % 10 === 0 && styles.tickMajor]}
-              />
-            ))}
-          </View>
-          <Animated.View style={[styles.head, headStyle]} pointerEvents="none" />
-          <Animated.View style={[styles.knob, knobStyle]} pointerEvents="none">
-            <View style={styles.knobInner} />
+          <Animated.View
+            style={[styles.strip, { width: layout.stripPx }, stripStyle]}
+            pointerEvents="none"
+          >
+            {Array.from({ length: layout.tickCount }).map((_, i) => {
+              const isMajor = i % majorEveryN === 0;
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.tick,
+                    { left: i * TICK_PX },
+                    isMajor && styles.tickMajor,
+                  ]}
+                />
+              );
+            })}
           </Animated.View>
+
+          <View style={styles.playhead} pointerEvents="none" />
         </View>
       </GestureDetector>
 
       <View style={styles.bottomRow}>
-        <Text style={styles.hint}>tap anywhere · drag to refine · slide down = finer</Text>
+        <Text style={styles.hint}>spin the wheel · slide down = finer</Text>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 14,
-  },
+  wrap: { paddingHorizontal: 0, paddingTop: 6, paddingBottom: 14 },
   modeRow: {
     flexDirection: "row",
     justifyContent: "center",
     gap: 6,
     height: 22,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   pill: {
     paddingHorizontal: 8,
@@ -331,70 +310,53 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "center",
     letterSpacing: -0.5,
-    marginBottom: 6,
+    marginBottom: 8,
     // @ts-ignore
     userSelect: "none",
   },
   track: {
-    height: TRACK_HEIGHT,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    height: HEIGHT,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
     justifyContent: "center",
   },
-  ticks: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 4,
-    alignItems: "center",
-    height: "100%",
-  },
+  strip: { height: HEIGHT, position: "relative" },
   tick: {
+    position: "absolute",
+    top: HEIGHT / 2 - 16,
     width: 1,
-    height: 14,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    height: 32,
+    backgroundColor: "rgba(255,255,255,0.22)",
   },
   tickMajor: {
-    height: 28,
+    top: HEIGHT / 2 - 26,
     width: 2,
-    backgroundColor: "rgba(255,255,255,0.45)",
+    height: 52,
+    backgroundColor: "rgba(255,255,255,0.55)",
   },
-  head: {
+  playhead: {
     position: "absolute",
+    left: "50%",
+    marginLeft: -2,
     top: 0,
     bottom: 0,
     width: 4,
-    backgroundColor: "#ff3b30",
     borderRadius: 2,
-  },
-  knob: {
-    position: "absolute",
-    top: TRACK_HEIGHT / 2 - KNOB_SIZE / 2,
-    width: KNOB_SIZE,
-    height: KNOB_SIZE,
-    borderRadius: KNOB_SIZE / 2,
-    backgroundColor: "#fff",
-    shadowColor: "#ff3b30",
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#fff",
-  },
-  knobInner: {
-    width: 5,
-    height: 34,
-    borderRadius: 2.5,
     backgroundColor: "#ff3b30",
+    shadowColor: "#ff3b30",
+    shadowOpacity: 0.85,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
   },
   bottomRow: {
     flexDirection: "row",
     justifyContent: "center",
     marginTop: 8,
+    paddingHorizontal: 16,
   },
   hint: {
     color: "rgba(255,255,255,0.4)",
