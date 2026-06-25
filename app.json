@@ -46,6 +46,7 @@
     },
     "ios": {
       "infoPlist": {
+        "LSSupportsOpeningDocumentsInPlace": true,
         "CFBundleDocumentTypes": [
           {
             "CFBundleTypeName": "Video",
@@ -100,6 +101,12 @@
       "expo-status-bar"
     ],
     "name": "Scrub",
-    "owner": "zackebenfeld"
+    "owner": "zackebenfeld",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ecea2033-e306-4070-bf58-7d4728087c3b"
+      }
+    }
   }
 }
