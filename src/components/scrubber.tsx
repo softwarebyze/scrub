@@ -36,6 +36,16 @@ function tickHaptic() {
   if (Platform.OS !== "web") Haptics.selectionAsync();
 }
 
+function edgeHaptic() {
+  if (Platform.OS !== "web")
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+}
+
+function modeHaptic() {
+  if (Platform.OS !== "web")
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+}
+
 export function Scrubber({
   duration,
   currentTime,
@@ -48,6 +58,13 @@ export function Scrubber({
   const isInteracting = useSharedValue(false);
   const headX = useSharedValue(0);
   const lastSeekMs = useSharedValue(0);
+  // Tracks the last "tick bucket" the head was in, for haptic emission as it
+  // crosses time-based boundaries during drag.
+  const lastTickBucket = useSharedValue(-1);
+  const lastTickMs = useSharedValue(0);
+  // Edge state: -1 = at left, 1 = at right, 0 = middle. Used to fire one
+  // sharper haptic per edge contact, not continuously.
+  const edgeState = useSharedValue(0);
   const [scrubbing, setScrubbing] = useState(false);
   const [displayTime, setDisplayTime] = useState(currentTime);
   const [mode, setMode] = useState(0);
@@ -90,12 +107,36 @@ export function Scrubber({
         lastSeekMs.value = now;
         runOnJS(onScrub)(t);
       }
+      // Tick haptics: emit a selection click each time the head crosses a
+      // time bucket boundary. Bucket size shrinks with finer scrub mode so
+      // frame-mode feels like a notched ratchet.
+      const m = lastMode.value;
+      const bucketSec = m === 0 ? 1.0 : m === 1 ? 0.5 : m === 2 ? 0.1 : 1 / 30;
+      const bucket = Math.floor(t / bucketSec);
+      if (bucket !== lastTickBucket.value) {
+        lastTickBucket.value = bucket;
+        // Rate-limit so a flick doesn't machine-gun the taptic engine.
+        if (now - lastTickMs.value >= 22) {
+          lastTickMs.value = now;
+          runOnJS(tickHaptic)();
+        }
+      }
+      // Edge haptics: fire once when the head hits 0 or width.
+      let edge: 0 | 1 | -1 = 0;
+      if (x <= 0.5) edge = -1;
+      else if (x >= w - 0.5) edge = 1;
+      if (edge !== 0 && edge !== edgeState.value) {
+        edgeState.value = edge;
+        runOnJS(edgeHaptic)();
+      } else if (edge === 0 && edgeState.value !== 0) {
+        edgeState.value = 0;
+      }
     }
   );
 
   const setModeJs = (m: number) => {
     setMode(m);
-    tickHaptic();
+    modeHaptic();
   };
 
   const finishScrub = (finalTime: number) => {
@@ -113,6 +154,12 @@ export function Scrubber({
       cancelAnimation(headX);
       isInteracting.value = true;
       lastSeekMs.value = 0;
+      // Seed buckets so the first tick after touchdown doesn't fire spuriously.
+      const w = Math.max(1, width.value);
+      const t0 = (headX.value / w) * duration;
+      lastTickBucket.value = Math.floor(t0 / 1.0);
+      lastTickMs.value = 0;
+      edgeState.value = 0;
       runOnJS(setScrubbingJs)(true);
       runOnJS(onScrubStart)();
     })
