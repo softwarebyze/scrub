@@ -1,11 +1,13 @@
 import { MarkersBar } from "@/components/markers-bar";
+import { RepeatingPressable } from "@/components/repeating-pressable";
 import { Scrubber } from "@/components/scrubber";
 import { SourceChip } from "@/components/source-chip";
 import { SpeedBar } from "@/components/speed-bar";
 import { TagsEditor } from "@/components/tags-editor";
 import { ThumbStrip } from "@/components/thumb-strip";
-import { TitleEditor } from "@/components/title-editor";
 import { Timeline } from "@/components/timeline";
+import { TitleEditor } from "@/components/title-editor";
+import { Toast, type ToastHandle } from "@/components/toast";
 import { ZoomableVideo } from "@/components/zoomable-video";
 import {
   getVideo,
@@ -45,6 +47,7 @@ export default function PlayerScreen() {
   const [tags, setTags] = useState<string[]>([]);
   const wasPlayingRef = useRef(false);
   const initialSeekRef = useRef<number | null>(null);
+  const toastRef = useRef<ToastHandle>(null);
 
   // Hydrate from DB once.
   useEffect(() => {
@@ -188,6 +191,9 @@ export default function PlayerScreen() {
           Haptics.selectionAsync();
         }
       }
+      const dir = frames > 0 ? "ahead" : "back";
+      const n = Math.abs(frames);
+      toastRef.current?.show(`${n} frame${n === 1 ? "" : "s"} ${dir}`);
     },
     [player, duration]
   );
@@ -204,13 +210,16 @@ export default function PlayerScreen() {
   }, [record, currentTime, duration]);
 
   const addMarker = useCallback(() => {
+    let added = false;
     setMarkers((prev) => {
       const t = currentTime;
       if (prev.some((m) => Math.abs(m - t) < 0.01)) return prev;
+      added = true;
       return [...prev, t].sort((a, b) => a - b);
     });
     if (Platform.OS !== "web")
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (added) toastRef.current?.show("Marker added");
   }, [currentTime]);
 
   const jumpToMarker = useCallback(
@@ -227,12 +236,15 @@ export default function PlayerScreen() {
   }, []);
 
   const addMarkerAt = useCallback((t: number) => {
+    let added = false;
     setMarkers((prev) => {
       if (prev.some((m) => Math.abs(m - t) < 0.01)) return prev;
+      added = true;
       return [...prev, t].sort((a, b) => a - b);
     });
     if (Platform.OS !== "web")
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (added) toastRef.current?.show("Marker added");
   }, []);
 
   const clearAllMarkers = useCallback(() => {
@@ -333,16 +345,16 @@ export default function PlayerScreen() {
 
         <View style={styles.controls}>
           <View style={styles.jumpCluster}>
-            <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(-10)} hitSlop={8}>
+            <RepeatingPressable style={styles.jumpBtn} onPress={() => jumpFrames(-10)} hitSlop={8}>
               <Text style={styles.jumpTxt}>−10</Text>
-            </Pressable>
-            <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(-5)} hitSlop={8}>
+            </RepeatingPressable>
+            <RepeatingPressable style={styles.jumpBtn} onPress={() => jumpFrames(-5)} hitSlop={8}>
               <Text style={styles.jumpTxt}>−5</Text>
-            </Pressable>
-            <Pressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(-1)} hitSlop={8}>
+            </RepeatingPressable>
+            <RepeatingPressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(-1)} hitSlop={8}>
               <Ionicons name="chevron-back" size={18} color="#fff" />
               <Text style={styles.jumpTxtPrimary}>1</Text>
-            </Pressable>
+            </RepeatingPressable>
           </View>
           <Pressable style={styles.playBtn} onPress={togglePlay} hitSlop={10}>
             <Ionicons
@@ -353,16 +365,16 @@ export default function PlayerScreen() {
             />
           </Pressable>
           <View style={styles.jumpCluster}>
-            <Pressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(1)} hitSlop={8}>
+            <RepeatingPressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(1)} hitSlop={8}>
               <Text style={styles.jumpTxtPrimary}>1</Text>
               <Ionicons name="chevron-forward" size={18} color="#fff" />
-            </Pressable>
-            <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(5)} hitSlop={8}>
+            </RepeatingPressable>
+            <RepeatingPressable style={styles.jumpBtn} onPress={() => jumpFrames(5)} hitSlop={8}>
               <Text style={styles.jumpTxt}>+5</Text>
-            </Pressable>
-            <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(10)} hitSlop={8}>
+            </RepeatingPressable>
+            <RepeatingPressable style={styles.jumpBtn} onPress={() => jumpFrames(10)} hitSlop={8}>
               <Text style={styles.jumpTxt}>+10</Text>
-            </Pressable>
+            </RepeatingPressable>
           </View>
         </View>
 
@@ -374,6 +386,7 @@ export default function PlayerScreen() {
           onScrubEnd={onScrubEnd}
         />
       </View>
+      <Toast ref={toastRef} />
     </SafeAreaView>
   );
 }
