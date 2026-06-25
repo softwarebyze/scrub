@@ -160,9 +160,18 @@ export default function PlayerScreen() {
   }, [player]);
 
   const togglePlay = useCallback(() => {
-    if (player.playing) player.pause();
-    else player.play();
-  }, [player]);
+    if (player.playing) {
+      player.pause();
+      return;
+    }
+    // If we're paused at (or within a frame of) the end, rewind to the start
+    // before resuming so the play button never feels like a dead button.
+    if (duration > 0 && player.currentTime >= duration - 1 / 30) {
+      player.currentTime = 0;
+      setCurrentTime(0);
+    }
+    player.play();
+  }, [player, duration]);
 
   const jumpFrames = useCallback(
     (frames: number) => {
