@@ -358,7 +358,7 @@ function ImportScreen({
             <BrandMark />
             <Text style={styles.brand}>Scrub</Text>
             <Text style={styles.tagline}>
-              import a video. drag the knob. frame-perfect or buttery smooth.
+              Scrub any video down to a single frame. Drag, fling, mark.
             </Text>
           </View>
 
@@ -366,24 +366,24 @@ function ImportScreen({
             <BigButton
               icon="videocam"
               label="Pick from Photos"
-              subtitle="your video library"
+              subtitle="Recent recordings and saved clips"
               onPress={onLibrary}
               primary
             />
             <BigButton
               icon="cloud-upload-outline"
               label="Open from Files"
-              subtitle="any file on your device or cloud"
+              subtitle="On-device, iCloud, or Drive"
               onPress={onFiles}
             />
             <View style={styles.hintCard}>
               <Ionicons name="information-circle-outline" size={14} color="rgba(255,255,255,0.45)" />
               <Text style={styles.hintTxt}>
                 {Platform.OS === "ios"
-                  ? "Or: Photos → Share → “Copy to Scrub”"
+                  ? "Tip: Photos → Share → “Copy to Scrub”"
                   : Platform.OS === "android"
-                  ? "Or: share a video from any app → Scrub"
-                  : "Or: drag a video file into the window"}
+                  ? "Tip: share a video from any app to Scrub"
+                  : "Tip: drag a video file anywhere on the window"}
               </Text>
             </View>
           </View>
@@ -398,7 +398,11 @@ function BrandMark() {
   // Reads as "video" + "precise scrubbing" at a glance.
   return (
     <View style={styles.brandMark}>
-      <View style={styles.brandGlow} pointerEvents="none" />
+      <View style={styles.brandGlowGroup} pointerEvents="none">
+        <View style={[styles.brandGlowRing, styles.brandGlowOuter]} />
+        <View style={[styles.brandGlowRing, styles.brandGlowMid]} />
+        <View style={[styles.brandGlowRing, styles.brandGlowInner]} />
+      </View>
       <View style={styles.brandFilmStrip}>
         {Array.from({ length: 5 }).map((_, i) => (
           <View key={i} style={styles.brandFrame} />
@@ -586,16 +590,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  brandGlow: {
+  brandGlowGroup: {
     position: "absolute",
-    width: 280,
-    height: 280,
-    borderRadius: 140,
+    alignItems: "center",
+    justifyContent: "center",
+    top: -90,
+  },
+  brandGlowRing: {
+    position: "absolute",
     backgroundColor: "#ff3b30",
-    opacity: 0.1,
-    top: -110,
-    // @ts-ignore — web only, no-op on native
-    filter: "blur(40px)",
+  },
+  brandGlowOuter: {
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+    opacity: 0.05,
+  },
+  brandGlowMid: {
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    opacity: 0.08,
+  },
+  brandGlowInner: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    opacity: 0.14,
   },
   brandFilmStrip: {
     flexDirection: "row",
