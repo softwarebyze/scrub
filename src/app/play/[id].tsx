@@ -226,6 +226,15 @@ export default function PlayerScreen() {
     setMarkers((prev) => prev.filter((m) => Math.abs(m - t) > 0.001));
   }, []);
 
+  const addMarkerAt = useCallback((t: number) => {
+    setMarkers((prev) => {
+      if (prev.some((m) => Math.abs(m - t) < 0.01)) return prev;
+      return [...prev, t].sort((a, b) => a - b);
+    });
+    if (Platform.OS !== "web")
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
+
   const clearAllMarkers = useCallback(() => {
     setMarkers([]);
     if (Platform.OS !== "web")
@@ -304,7 +313,9 @@ export default function PlayerScreen() {
           player={player}
           duration={duration}
           currentTime={currentTime}
+          markers={sortedMarkers}
           onSeek={jumpToMarker}
+          onAddMarkerAt={addMarkerAt}
         />
 
         <SpeedBar speed={speed} onChange={setSpeed} />
