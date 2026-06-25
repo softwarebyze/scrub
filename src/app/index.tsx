@@ -232,11 +232,6 @@ function EmptyState({
 function BrandMark() {
   return (
     <View style={styles.brandMark}>
-      <View style={styles.brandGlowGroup} pointerEvents="none">
-        <View style={[styles.brandGlowRing, styles.brandGlowOuter]} />
-        <View style={[styles.brandGlowRing, styles.brandGlowMid]} />
-        <View style={[styles.brandGlowRing, styles.brandGlowInner]} />
-      </View>
       <View style={styles.brandFilmStrip}>
         {Array.from({ length: 5 }).map((_, i) => (
           <View key={i} style={styles.brandFrame} />
@@ -346,16 +341,6 @@ const styles = StyleSheet.create({
   },
 
   brandMark: { width: 220, height: 96, alignItems: "center", justifyContent: "center" },
-  brandGlowGroup: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-    top: -90,
-  },
-  brandGlowRing: { position: "absolute", backgroundColor: "#ff3b30" },
-  brandGlowOuter: { width: 340, height: 340, borderRadius: 170, opacity: 0.05 },
-  brandGlowMid: { width: 240, height: 240, borderRadius: 120, opacity: 0.08 },
-  brandGlowInner: { width: 140, height: 140, borderRadius: 70, opacity: 0.14 },
   brandFilmStrip: {
     flexDirection: "row",
     gap: 6,
