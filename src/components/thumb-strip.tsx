@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     borderColor: "#ff3b30",
   },
   loading: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
