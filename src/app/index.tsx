@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: "center",
   },
-  loader: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  loader: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
   controls: {
     flexDirection: "row",
     alignItems: "center",
