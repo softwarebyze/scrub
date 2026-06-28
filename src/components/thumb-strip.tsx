@@ -115,10 +115,17 @@ function ThumbStripInner({
   // not on every tap. Reset on drag end so taps don't get penalized.
   const userDraggingRef = useRef(false);
 
+  const sourceKey = `${uri ?? ""}:${Math.round(duration * 1000)}`;
+  const [prevSourceKey, setPrevSourceKey] = useState(sourceKey);
+  if (prevSourceKey !== sourceKey) {
+    setPrevSourceKey(sourceKey);
+    setThumbs([]);
+    setLoading(false);
+  }
+
   useEffect(() => {
     cancelledRef.current.current = true;
     cancelledRef.current = { current: false };
-    setThumbs([]);
     if (!uri || !duration || duration < 0.05) return;
     setLoading(true);
 

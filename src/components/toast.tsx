@@ -56,7 +56,7 @@ export const Toast = forwardRef<ToastHandle, {}>(function Toast(_props, ref) {
 
 const styles = StyleSheet.create({
   layer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "flex-start",
     paddingTop: 70,

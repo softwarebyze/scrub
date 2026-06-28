@@ -159,64 +159,80 @@ export function Scrubber({
     [onScrub, onScrubEnd]
   );
 
-  const pan = Gesture.Pan()
-    .minDistance(0)
-    .onBegin(() => {
-      cancelAnimation(headTime);
-      isInteracting.set(true);
-      lastSeekMs.set(0);
-      lastTickBucket.set(
-        Math.floor(headTime.get() / Math.max(0.01, layout.majorStepSec))
-      );
-      lastTickMs.set(0);
-      edgeState.set(0);
-      runOnJS(setScrubbingJs)(true);
-      runOnJS(onScrubStart)();
-    })
-    .onChange((e) => {
-      const dy = Math.max(0, e.y);
-      // 1× covers the top ~60% so casual spins feel direct.
-      const speed = dy > 140 ? 0.05 : dy > 100 ? 0.25 : dy > 70 ? 0.5 : 1;
-      const m = speed === 1 ? 0 : speed === 0.5 ? 1 : speed === 0.25 ? 2 : 3;
-      if (m !== lastMode.get()) {
-        lastMode.set(m);
-        runOnJS(setModeJs)(m);
-      }
-      // Wheel mapping: dragging the wheel LEFT pulls future ticks past the
-      // playhead, i.e. time increases. dt = -changeX / pxPerSec * speed.
-      const dt = (-e.changeX / layout.pxPerSec) * speed;
-      headTime.set(Math.max(0, Math.min(duration, headTime.get() + dt)));
-    })
-    .onEnd((e) => {
-      const dy = Math.max(0, e.y);
-      const speed = dy > 140 ? 0.05 : dy > 100 ? 0.25 : dy > 70 ? 0.5 : 1;
-      const v = (-e.velocityX / layout.pxPerSec) * speed;
-      if (Math.abs(v) < 0.5) {
-        isInteracting.set(false);
-        lastMode.set(0);
-        runOnJS(finishScrub)(headTime.get());
-        return;
-      }
-      headTime.set(
-        withDecay(
-          { velocity: v, clamp: [0, duration], deceleration: 0.998 },
-          (finished) => {
-            if (!finished) return;
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(0)
+        .onBegin(() => {
+          cancelAnimation(headTime);
+          isInteracting.set(true);
+          lastSeekMs.set(0);
+          lastTickBucket.set(
+            Math.floor(headTime.get() / Math.max(0.01, layout.majorStepSec))
+          );
+          lastTickMs.set(0);
+          edgeState.set(0);
+          runOnJS(setScrubbingJs)(true);
+          runOnJS(onScrubStart)();
+        })
+        .onChange((e) => {
+          const dy = Math.max(0, e.y);
+          const speed = dy > 140 ? 0.05 : dy > 100 ? 0.25 : dy > 70 ? 0.5 : 1;
+          const m = speed === 1 ? 0 : speed === 0.5 ? 1 : speed === 0.25 ? 2 : 3;
+          if (m !== lastMode.get()) {
+            lastMode.set(m);
+            runOnJS(setModeJs)(m);
+          }
+          const dt = (-e.changeX / layout.pxPerSec) * speed;
+          headTime.set(Math.max(0, Math.min(duration, headTime.get() + dt)));
+        })
+        .onEnd((e) => {
+          const dy = Math.max(0, e.y);
+          const speed = dy > 140 ? 0.05 : dy > 100 ? 0.25 : dy > 70 ? 0.5 : 1;
+          const v = (-e.velocityX / layout.pxPerSec) * speed;
+          if (Math.abs(v) < 0.5) {
+            isInteracting.set(false);
+            lastMode.set(0);
+            runOnJS(finishScrub)(headTime.get());
+            return;
+          }
+          headTime.set(
+            withDecay(
+              { velocity: v, clamp: [0, duration], deceleration: 0.998 },
+              (finished) => {
+                if (!finished) return;
+                isInteracting.set(false);
+                lastMode.set(0);
+                runOnJS(finishScrub)(headTime.get());
+              }
+            )
+          );
+        })
+        .onFinalize((_e, success) => {
+          if (!success) {
+            cancelAnimation(headTime);
             isInteracting.set(false);
             lastMode.set(0);
             runOnJS(finishScrub)(headTime.get());
           }
-        )
-      );
-    })
-    .onFinalize((_e, success) => {
-      if (!success) {
-        cancelAnimation(headTime);
-        isInteracting.set(false);
-        lastMode.set(0);
-        runOnJS(finishScrub)(headTime.get());
-      }
-    });
+        }),
+    [
+      duration,
+      layout.majorStepSec,
+      layout.pxPerSec,
+      finishScrub,
+      onScrubStart,
+      setModeJs,
+      setScrubbingJs,
+      headTime,
+      isInteracting,
+      lastSeekMs,
+      lastTickBucket,
+      lastTickMs,
+      edgeState,
+      lastMode,
+    ]
+  );
 
   // The tick strip translates so headTime aligns with the playhead at center.
   const stripStyle = useAnimatedStyle(() => ({

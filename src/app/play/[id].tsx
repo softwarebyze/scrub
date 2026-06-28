@@ -21,7 +21,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import { useVideoPlayer } from "expo-video";
+import { useVideoPlayer, type VideoPlayer } from "expo-video";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -34,6 +34,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const FRAME = 1 / 30;
+
+function applyPlaybackRate(player: VideoPlayer, rate: number) {
+  try {
+    player.playbackRate = rate;
+  } catch {}
+}
 
 export default function PlayerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -103,7 +109,7 @@ export default function PlayerScreen() {
       if (status === "readyToPlay") {
         setDuration(player.duration || 0);
         try {
-          player.playbackRate = speedRef.current;
+          applyPlaybackRate(player, speedRef.current);
         } catch {}
         // Resume from saved position once.
         if (initialSeekRef.current !== null && initialSeekRef.current > 0.05) {
@@ -121,9 +127,7 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     if (!record) return;
-    try {
-      player.playbackRate = speed;
-    } catch {}
+    applyPlaybackRate(player, speed);
   }, [speed, player, record]);
 
   useEffect(() => {
@@ -465,7 +469,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: "center",
   },
-  loader: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  loader: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
   controls: {
     flexDirection: "row",
     alignItems: "center",
