@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
 import { VideoPlayer } from "expo-video";
 import { memo, useEffect, useRef, useState } from "react";
 import {
@@ -18,12 +19,15 @@ type Props = {
   player: VideoPlayer;
   duration: number;
   currentTime: number;
+  markers: number[];
   onSeek: (t: number) => void;
+  onAddMarkerAt: (t: number) => void;
 };
 
 const COUNT = 40;
 const W = 72;
-const H = 44;
+const H = 48;
+const GAP = 4;
 const MAX_W = 144;
 
 async function extractWebThumbs(
@@ -86,18 +90,42 @@ async function extractWebThumbs(
   }
 }
 
-function ThumbStripInner({ uri, player, duration, currentTime, onSeek }: Props) {
+function tap() {
+  if (Platform.OS !== "web") Haptics.selectionAsync();
+}
+function pop() {
+  if (Platform.OS !== "web")
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+}
+
+function ThumbStripInner({
+  uri,
+  player,
+  duration,
+  currentTime,
+  markers,
+  onSeek,
+  onAddMarkerAt,
+}: Props) {
   const [thumbs, setThumbs] = useState<Thumb[]>([]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const cancelledRef = useRef({ current: false });
-  const userScrollingRef = useRef(false);
-  const userScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Suppress auto-scroll only while the user is actively dragging the strip,
+  // not on every tap. Reset on drag end so taps don't get penalized.
+  const userDraggingRef = useRef(false);
+
+  const sourceKey = `${uri ?? ""}:${Math.round(duration * 1000)}`;
+  const [prevSourceKey, setPrevSourceKey] = useState(sourceKey);
+  if (prevSourceKey !== sourceKey) {
+    setPrevSourceKey(sourceKey);
+    setThumbs([]);
+    setLoading(false);
+  }
 
   useEffect(() => {
     cancelledRef.current.current = true;
     cancelledRef.current = { current: false };
-    setThumbs([]);
     if (!uri || !duration || duration < 0.05) return;
     setLoading(true);
 
@@ -135,9 +163,7 @@ function ThumbStripInner({ uri, player, duration, currentTime, onSeek }: Props) 
           for (let i = 0; i < out.length; i++) {
             results[i] = { time: times[i], src: out[i] };
           }
-        } catch {
-          // ignore — leaves empty thumbs
-        }
+        } catch {}
       }
       if (!cancelToken.current) {
         setThumbs(results.filter(Boolean));
@@ -153,25 +179,29 @@ function ThumbStripInner({ uri, player, duration, currentTime, onSeek }: Props) 
   }, [uri, duration, player]);
 
   const activeIdx = duration
-    ? Math.min(COUNT - 1, Math.max(0, Math.round((currentTime / duration) * (COUNT - 1))))
+    ? Math.min(
+        COUNT - 1,
+        Math.max(0, Math.round((currentTime / duration) * (COUNT - 1)))
+      )
     : 0;
 
-  // Auto-scroll active thumb into view (unless user is actively scrolling).
   useEffect(() => {
-    if (userScrollingRef.current) return;
+    if (userDraggingRef.current) return;
     const id = requestAnimationFrame(() => {
-      const target = Math.max(0, activeIdx * (W + 4) - 100);
-      scrollRef.current?.scrollTo({ x: target, animated: false });
+      const target = Math.max(0, activeIdx * (W + GAP) - 120);
+      scrollRef.current?.scrollTo({ x: target, animated: true });
     });
     return () => cancelAnimationFrame(id);
   }, [activeIdx]);
 
-  const markUserScrolling = () => {
-    userScrollingRef.current = true;
-    if (userScrollTimeoutRef.current) clearTimeout(userScrollTimeoutRef.current);
-    userScrollTimeoutRef.current = setTimeout(() => {
-      userScrollingRef.current = false;
-    }, 700);
+  const handleSeek = (t: number) => {
+    tap();
+    onSeek(t);
+  };
+
+  const handleLongPress = (t: number) => {
+    pop();
+    onAddMarkerAt(t);
   };
 
   return (
@@ -181,25 +211,45 @@ function ThumbStripInner({ uri, player, duration, currentTime, onSeek }: Props) 
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
-        onScrollBeginDrag={markUserScrolling}
-        onTouchStart={markUserScrolling}
+        onScrollBeginDrag={() => {
+          userDraggingRef.current = true;
+        }}
+        onScrollEndDrag={() => {
+          userDraggingRef.current = false;
+        }}
+        onMomentumScrollEnd={() => {
+          userDraggingRef.current = false;
+        }}
         scrollEventThrottle={16}
       >
-        {thumbs.map((item, index) => (
-          <ThumbItem
-            key={`${item.time}-${index}`}
-            src={item.src}
-            time={item.time}
-            active={index === activeIdx}
-            onPress={onSeek}
-          />
-        ))}
+        {thumbs.map((item, index) => {
+          const isActive = index === activeIdx;
+          const bucketStart = item.time - duration / (COUNT - 1) / 2;
+          const bucketEnd = item.time + duration / (COUNT - 1) / 2;
+          const hasMarker = markers.some(
+            (m) => m >= bucketStart && m < bucketEnd
+          );
+          return (
+            <ThumbItem
+              key={`${item.time}-${index}`}
+              src={item.src}
+              time={item.time}
+              active={isActive}
+              hasMarker={hasMarker}
+              onPress={handleSeek}
+              onLongPress={handleLongPress}
+            />
+          );
+        })}
       </ScrollView>
       {loading && thumbs.length < 4 && (
         <View style={styles.loading} pointerEvents="none">
           <ActivityIndicator size="small" color="#fff" />
           <Text style={styles.loadingText}>generating frames…</Text>
         </View>
+      )}
+      {thumbs.length > 0 && !loading && (
+        <Text style={styles.hint}>tap to seek · long-press to mark</Text>
       )}
     </View>
   );
@@ -209,21 +259,34 @@ const ThumbItem = memo(function ThumbItem({
   src,
   time,
   active,
+  hasMarker,
   onPress,
+  onLongPress,
 }: {
   src: any;
   time: number;
   active: boolean;
+  hasMarker: boolean;
   onPress: (t: number) => void;
+  onLongPress: (t: number) => void;
 }) {
   return (
-    <Pressable onPress={() => onPress(time)} style={styles.itemWrap}>
+    <Pressable
+      onPress={() => onPress(time)}
+      onLongPress={() => onLongPress(time)}
+      delayLongPress={280}
+      style={({ pressed }) => [
+        styles.itemWrap,
+        pressed && { opacity: 0.85 },
+      ]}
+    >
+      {hasMarker && <View style={styles.markerDot} pointerEvents="none" />}
       <Image
         source={src}
         style={[styles.thumb, active && styles.thumbActive]}
         contentFit="cover"
         cachePolicy="memory"
-        transition={0}
+        transition={120}
       />
     </Pressable>
   );
@@ -232,18 +295,38 @@ const ThumbItem = memo(function ThumbItem({
 export const ThumbStrip = memo(ThumbStripInner);
 
 const styles = StyleSheet.create({
-  wrap: { height: H + 10, justifyContent: "center" },
-  row: { gap: 4, paddingHorizontal: 16 },
-  itemWrap: { width: W, height: H },
+  wrap: { height: H + 24, justifyContent: "center" },
+  row: { gap: GAP, paddingHorizontal: 16, alignItems: "flex-end" },
+  itemWrap: { width: W, height: H, position: "relative" },
   thumb: {
     width: W,
     height: H,
-    borderRadius: 6,
+    borderRadius: 8,
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   thumbActive: {
     borderWidth: 2,
     borderColor: "#ff3b30",
+    transform: [{ scale: 1.06 }],
+    shadowColor: "#ff3b30",
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  markerDot: {
+    position: "absolute",
+    top: -6,
+    left: "50%",
+    marginLeft: -3,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#facc15",
+    zIndex: 1,
+    shadowColor: "#facc15",
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 0 },
   },
   loading: {
     ...StyleSheet.absoluteFill,
@@ -253,4 +336,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   loadingText: { color: "rgba(255,255,255,0.5)", fontSize: 11 },
+  hint: {
+    color: "rgba(255,255,255,0.35)",
+    fontSize: 10,
+    textAlign: "center",
+    marginTop: 4,
+    // @ts-ignore
+    userSelect: "none",
+  },
 });
