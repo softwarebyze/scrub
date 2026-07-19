@@ -28,3 +28,6 @@ jobs:
 
       - name: Knip
         run: bun run knip
+
+      - name: Unit checks
+        run: bun run test

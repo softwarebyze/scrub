@@ -193,20 +193,22 @@ function EmptyState({
       <View style={styles.emptyInner}>
         <BrandMark />
         <Text style={styles.emptyTagline}>
-          Scrub any video down to a single frame. Drag, fling, mark.
+          Photos makes frame-perfect scrubbing nearly impossible. Scrub
+          doesn’t — tick wheel, ±1 frame jumps, A–B loops. Local files. No
+          upload. No subscription.
         </Text>
         <View style={{ gap: 10, width: "100%" }}>
           <BigButton
             icon="videocam"
             label="Pick from Photos"
-            subtitle="Recent recordings and saved clips"
+            subtitle="Golf swings, dance takes, anything you filmed"
             onPress={onLibrary}
             primary
           />
           <BigButton
             icon="cloud-upload-outline"
             label="Open from Files"
-            subtitle="On-device, iCloud, or Drive"
+            subtitle="Stays on your device — never forced to the cloud"
             onPress={onFiles}
           />
           <View style={styles.hintCard}>
@@ -219,8 +221,8 @@ function EmptyState({
               {Platform.OS === "ios"
                 ? "Tip: Photos → Share → “Copy to Scrub”"
                 : Platform.OS === "android"
-                ? "Tip: share a video from any app to Scrub"
-                : "Tip: drag a video file anywhere on the window"}
+                  ? "Tip: share a video from any app to Scrub"
+                  : "Tip: drag a video file anywhere · keyboard: ←/→ frame, Space play"}
             </Text>
           </View>
         </View>

@@ -1,3 +1,4 @@
+import { LoopBar } from "@/components/loop-bar";
 import { MarkersBar } from "@/components/markers-bar";
 import { RepeatingPressable } from "@/components/repeating-pressable";
 import { Scrubber } from "@/components/scrubber";
@@ -18,6 +19,7 @@ import {
   touchVideo,
   type VideoRecord,
 } from "@/db/library";
+import { clampLoop, resolveHotkey } from "@/lib/player-hotkeys";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
@@ -51,6 +53,10 @@ export default function PlayerScreen() {
   const [markers, setMarkers] = useState<number[]>([]);
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState<string[]>([]);
+  const [loopIn, setLoopIn] = useState<number | null>(null);
+  const [loopOut, setLoopOut] = useState<number | null>(null);
+  const [looping, setLooping] = useState(false);
+  const [muted, setMuted] = useState(false);
   const wasPlayingRef = useRef(false);
   const initialSeekRef = useRef<number | null>(null);
   const toastRef = useRef<ToastHandle>(null);
@@ -134,9 +140,20 @@ export default function PlayerScreen() {
     if (!record) return;
     const sub = player.addListener("timeUpdate", ({ currentTime: t }) => {
       setCurrentTime(t);
+      const range = looping ? clampLoop(loopIn, loopOut) : null;
+      if (range && t >= range.out - 0.02) {
+        player.currentTime = range.in;
+        setCurrentTime(range.in);
+      }
     });
     return () => sub.remove();
-  }, [record, player]);
+  }, [record, player, looping, loopIn, loopOut]);
+
+  useEffect(() => {
+    try {
+      player.muted = muted;
+    } catch {}
+  }, [player, muted]);
 
   // Periodic save + force-save on unmount. Reads latest values from refs so
   // this effect doesn't re-subscribe on every timeUpdate tick — otherwise the
@@ -323,6 +340,103 @@ export default function PlayerScreen() {
     [record]
   );
 
+  const setInPoint = useCallback(() => {
+    const t = currentTimeRef.current;
+    setLoopIn(t);
+    if (loopOut != null && loopOut <= t + 0.05) setLoopOut(null);
+    toastRef.current?.show("In point set");
+  }, [loopOut]);
+
+  const setOutPoint = useCallback(() => {
+    const t = currentTimeRef.current;
+    setLoopOut(t);
+    if (loopIn != null && t <= loopIn + 0.05) setLoopIn(null);
+    toastRef.current?.show("Out point set");
+  }, [loopIn]);
+
+  const toggleLoop = useCallback(() => {
+    const range = clampLoop(loopIn, loopOut);
+    if (!range) {
+      toastRef.current?.show("Set In and Out first");
+      return;
+    }
+    setLooping((v) => {
+      const next = !v;
+      toastRef.current?.show(next ? "A–B loop on" : "A–B loop off");
+      return next;
+    });
+  }, [loopIn, loopOut]);
+
+  const clearLoop = useCallback(() => {
+    setLoopIn(null);
+    setLoopOut(null);
+    setLooping(false);
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    setMuted((v) => {
+      const next = !v;
+      toastRef.current?.show(next ? "Muted" : "Unmuted");
+      return next;
+    });
+  }, []);
+
+  // Desktop / web keyboard — the whole point of a scrubbing tool on a laptop.
+  useEffect(() => {
+    if (Platform.OS !== "web" || !record) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) return;
+
+      const action = resolveHotkey(e);
+      if (!action) return;
+      e.preventDefault();
+      switch (action.type) {
+        case "togglePlay":
+          togglePlay();
+          break;
+        case "jumpFrames":
+          jumpFrames(action.frames);
+          break;
+        case "addMarker":
+          addMarker();
+          break;
+        case "prevMarker":
+          prevMarker();
+          break;
+        case "nextMarker":
+          nextMarker();
+          break;
+        case "setIn":
+          setInPoint();
+          break;
+        case "setOut":
+          setOutPoint();
+          break;
+        case "toggleLoop":
+          toggleLoop();
+          break;
+        case "toggleMute":
+          toggleMute();
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    record,
+    togglePlay,
+    jumpFrames,
+    addMarker,
+    prevMarker,
+    nextMarker,
+    setInPoint,
+    setOutPoint,
+    toggleLoop,
+    toggleMute,
+  ]);
+
   if (!record) {
     return (
       <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
@@ -370,6 +484,18 @@ export default function PlayerScreen() {
         />
 
         <SpeedBar speed={speed} onChange={setSpeed} />
+
+        <LoopBar
+          inPoint={loopIn}
+          outPoint={loopOut}
+          looping={looping}
+          muted={muted}
+          onSetIn={setInPoint}
+          onSetOut={setOutPoint}
+          onToggleLoop={toggleLoop}
+          onClear={clearLoop}
+          onToggleMute={toggleMute}
+        />
 
         <MarkersBar
           markers={sortedMarkers}
@@ -424,6 +550,12 @@ export default function PlayerScreen() {
           onScrubStart={onScrubStart}
           onScrubEnd={onScrubEnd}
         />
+
+        {Platform.OS === "web" && (
+          <Text style={styles.hotkeyHint}>
+            Space play · ←/→ frame · Shift±5 · Alt±10 · I/O loop · M mark · U mute
+          </Text>
+        )}
       </View>
       <Toast ref={toastRef} />
     </SafeAreaView>
@@ -520,5 +652,12 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     // @ts-ignore
     userSelect: "none",
+  },
+  hotkeyHint: {
+    color: "rgba(255,255,255,0.35)",
+    fontSize: 11,
+    textAlign: "center",
+    paddingBottom: 6,
+    paddingHorizontal: 12,
   },
 });
