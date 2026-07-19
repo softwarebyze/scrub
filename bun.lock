@@ -4,13 +4,15 @@
     "": {
       "name": "scrub",
       "dependencies": {
+        "@expo-google-fonts/bebas-neue": "^0.4.1",
+        "@expo-google-fonts/ibm-plex-mono": "^0.4.1",
         "@expo/vector-icons": "^15.0.3",
         "expo": "^56.0.4",
         "expo-build-properties": "~56.0.14",
         "expo-constants": "~56.0.15",
         "expo-dev-client": "~56.0.15",
         "expo-document-picker": "~56.0.4",
-        "expo-font": "~56.0.5",
+        "expo-font": "~56.0.7",
         "expo-haptics": "~56.0.3",
         "expo-image": "~56.0.9",
         "expo-image-picker": "~56.0.18",
@@ -194,6 +196,10 @@
     "@emnapi/runtime": ["@emnapi/runtime@1.11.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-vgj7R3y3Wgx24IQaGPA/R6YFXLHVMOZ0uVEyIQPaWs+rd1AzfEMXlAC22FYwO1XkKR6NPsq7mUandH8oIRdZFw=="],
 
     "@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
+
+    "@expo-google-fonts/bebas-neue": ["@expo-google-fonts/bebas-neue@0.4.1", "", {}, "sha512-Ibnf0EQgMUj01tT/ws64RlsMQmOvDP+UDFW93bld0C/WwaOaCGWKgNnqxNkKxmL73y2kpT8EB4dkSNUOyAOEJA=="],
+
+    "@expo-google-fonts/ibm-plex-mono": ["@expo-google-fonts/ibm-plex-mono@0.4.1", "", {}, "sha512-/yYz1mPZq8Nd4tSiH0SBDPEdJUqiOGBwVgSrQvLuw7SPh6C7ezBzmi6eFyHY4QaQwjHDmOLSBKsxzq8ZDFXVAg=="],
 
     "@expo-google-fonts/material-symbols": ["@expo-google-fonts/material-symbols@0.4.38", "", {}, "sha512-IJkBtN1o8u9BW5fvSii1MyHPQ7Q0HxbWcVBvOrOzgMLpVtZw7R2w94wBTVR7kZwv3w1JNTESMmLA5Sqn1+Z36A=="],
 
