@@ -1,11 +1,13 @@
 import { MarkersBar } from "@/components/markers-bar";
+import { RepeatingPressable } from "@/components/repeating-pressable";
 import { Scrubber } from "@/components/scrubber";
 import { SourceChip } from "@/components/source-chip";
 import { SpeedBar } from "@/components/speed-bar";
 import { TagsEditor } from "@/components/tags-editor";
 import { ThumbStrip } from "@/components/thumb-strip";
-import { TitleEditor } from "@/components/title-editor";
 import { Timeline } from "@/components/timeline";
+import { TitleEditor } from "@/components/title-editor";
+import { Toast, type ToastHandle } from "@/components/toast";
 import { ZoomableVideo } from "@/components/zoomable-video";
 import {
   getVideo,
@@ -19,7 +21,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import { useVideoPlayer } from "expo-video";
+import { useVideoPlayer, type VideoPlayer } from "expo-video";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -33,6 +35,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 const FRAME = 1 / 30;
 
+function applyPlaybackRate(player: VideoPlayer, rate: number) {
+  try {
+    player.playbackRate = rate;
+  } catch {}
+}
+
 export default function PlayerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [record, setRecord] = useState<VideoRecord | null>(null);
@@ -45,6 +53,26 @@ export default function PlayerScreen() {
   const [tags, setTags] = useState<string[]>([]);
   const wasPlayingRef = useRef(false);
   const initialSeekRef = useRef<number | null>(null);
+  const toastRef = useRef<ToastHandle>(null);
+  const jumpAccumRef = useRef<{ total: number; timer: ReturnType<typeof setTimeout> | null }>({
+    total: 0,
+    timer: null,
+  });
+
+  // Mirrors of fast-changing state so stable callbacks/effects can read the
+  // latest values without re-running on every timeUpdate tick (~30ms).
+  const currentTimeRef = useRef(0);
+  const durationRef = useRef(0);
+  const speedRef = useRef(1);
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
 
   // Hydrate from DB once.
   useEffect(() => {
@@ -80,7 +108,9 @@ export default function PlayerScreen() {
     const sub = player.addListener("statusChange", ({ status }) => {
       if (status === "readyToPlay") {
         setDuration(player.duration || 0);
-        player.playbackRate = speed;
+        try {
+          applyPlaybackRate(player, speedRef.current);
+        } catch {}
         // Resume from saved position once.
         if (initialSeekRef.current !== null && initialSeekRef.current > 0.05) {
           const seek = Math.min(initialSeekRef.current, (player.duration || 0) - 0.05);
@@ -93,13 +123,11 @@ export default function PlayerScreen() {
       }
     });
     return () => sub.remove();
-  }, [record, player, speed]);
+  }, [record, player]);
 
   useEffect(() => {
     if (!record) return;
-    try {
-      player.playbackRate = speed;
-    } catch {}
+    applyPlaybackRate(player, speed);
   }, [speed, player, record]);
 
   useEffect(() => {
@@ -110,28 +138,26 @@ export default function PlayerScreen() {
     return () => sub.remove();
   }, [record, player]);
 
-  // Persist lastTime + duration ~every 1.5s while not at zero.
+  // Periodic save + force-save on unmount. Reads latest values from refs so
+  // this effect doesn't re-subscribe on every timeUpdate tick — otherwise the
+  // interval gets reset before it can fire and the cleanup hammers storage.
   useEffect(() => {
     if (!record) return;
+    const id = record.id;
     const interval = setInterval(() => {
-      setPlaybackState(record.id, {
-        lastTime: currentTime,
-        duration: duration || undefined,
+      setPlaybackState(id, {
+        lastTime: currentTimeRef.current,
+        duration: durationRef.current || undefined,
       }).catch(() => {});
     }, 1500);
-    return () => clearInterval(interval);
-  }, [record, currentTime, duration]);
-
-  // Force-save on unmount.
-  useEffect(() => {
     return () => {
-      if (!record) return;
-      setPlaybackState(record.id, {
-        lastTime: currentTime,
-        duration: duration || undefined,
+      clearInterval(interval);
+      setPlaybackState(id, {
+        lastTime: currentTimeRef.current,
+        duration: durationRef.current || undefined,
       }).catch(() => {});
     };
-  }, [record, currentTime, duration]);
+  }, [record]);
 
   // Persist markers when they change.
   useEffect(() => {
@@ -176,7 +202,10 @@ export default function PlayerScreen() {
   const jumpFrames = useCallback(
     (frames: number) => {
       player.pause();
-      const t = Math.max(0, Math.min(duration, player.currentTime + frames * FRAME));
+      const t = Math.max(
+        0,
+        Math.min(durationRef.current, player.currentTime + frames * FRAME)
+      );
       player.currentTime = t;
       setCurrentTime(t);
       if (Platform.OS !== "web") {
@@ -188,30 +217,47 @@ export default function PlayerScreen() {
           Haptics.selectionAsync();
         }
       }
+      const accum = jumpAccumRef.current;
+      // Reset accumulator if direction flipped.
+      if ((accum.total > 0 && frames < 0) || (accum.total < 0 && frames > 0)) {
+        accum.total = 0;
+      }
+      accum.total += frames;
+      const n = Math.abs(accum.total);
+      const dir = accum.total > 0 ? "ahead" : "back";
+      toastRef.current?.show(`${n} frame${n === 1 ? "" : "s"} ${dir}`);
+      if (accum.timer) clearTimeout(accum.timer);
+      accum.timer = setTimeout(() => {
+        accum.total = 0;
+        accum.timer = null;
+      }, 900);
     },
-    [player, duration]
+    [player]
   );
 
   const goBack = useCallback(() => {
     if (record) {
       setPlaybackState(record.id, {
-        lastTime: currentTime,
-        duration: duration || undefined,
+        lastTime: currentTimeRef.current,
+        duration: durationRef.current || undefined,
       }).catch(() => {});
     }
     if (router.canGoBack()) router.back();
     else router.replace("/");
-  }, [record, currentTime, duration]);
+  }, [record]);
 
   const addMarker = useCallback(() => {
+    const t = currentTimeRef.current;
+    let added = false;
     setMarkers((prev) => {
-      const t = currentTime;
       if (prev.some((m) => Math.abs(m - t) < 0.01)) return prev;
+      added = true;
       return [...prev, t].sort((a, b) => a - b);
     });
     if (Platform.OS !== "web")
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [currentTime]);
+    if (added) toastRef.current?.show("Marker added");
+  }, []);
 
   const jumpToMarker = useCallback(
     (t: number) => {
@@ -226,6 +272,18 @@ export default function PlayerScreen() {
     setMarkers((prev) => prev.filter((m) => Math.abs(m - t) > 0.001));
   }, []);
 
+  const addMarkerAt = useCallback((t: number) => {
+    let added = false;
+    setMarkers((prev) => {
+      if (prev.some((m) => Math.abs(m - t) < 0.01)) return prev;
+      added = true;
+      return [...prev, t].sort((a, b) => a - b);
+    });
+    if (Platform.OS !== "web")
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (added) toastRef.current?.show("Marker added");
+  }, []);
+
   const clearAllMarkers = useCallback(() => {
     setMarkers([]);
     if (Platform.OS !== "web")
@@ -233,16 +291,18 @@ export default function PlayerScreen() {
   }, []);
 
   const prevMarker = useCallback(() => {
-    const cands = markers.filter((m) => m < currentTime - 0.05);
+    const t = currentTimeRef.current;
+    const cands = markers.filter((m) => m < t - 0.05);
     if (!cands.length) return;
     jumpToMarker(cands[cands.length - 1]);
-  }, [markers, currentTime, jumpToMarker]);
+  }, [markers, jumpToMarker]);
 
   const nextMarker = useCallback(() => {
-    const cand = markers.find((m) => m > currentTime + 0.05);
+    const t = currentTimeRef.current;
+    const cand = markers.find((m) => m > t + 0.05);
     if (cand === undefined) return;
     jumpToMarker(cand);
-  }, [markers, currentTime, jumpToMarker]);
+  }, [markers, jumpToMarker]);
 
   const sortedMarkers = useMemo(() => [...markers].sort((a, b) => a - b), [markers]);
 
@@ -304,7 +364,9 @@ export default function PlayerScreen() {
           player={player}
           duration={duration}
           currentTime={currentTime}
+          markers={sortedMarkers}
           onSeek={jumpToMarker}
+          onAddMarkerAt={addMarkerAt}
         />
 
         <SpeedBar speed={speed} onChange={setSpeed} />
@@ -322,16 +384,16 @@ export default function PlayerScreen() {
 
         <View style={styles.controls}>
           <View style={styles.jumpCluster}>
-            <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(-10)} hitSlop={8}>
+            <RepeatingPressable style={styles.jumpBtn} onPress={() => jumpFrames(-10)} hitSlop={8}>
               <Text style={styles.jumpTxt}>−10</Text>
-            </Pressable>
-            <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(-5)} hitSlop={8}>
+            </RepeatingPressable>
+            <RepeatingPressable style={styles.jumpBtn} onPress={() => jumpFrames(-5)} hitSlop={8}>
               <Text style={styles.jumpTxt}>−5</Text>
-            </Pressable>
-            <Pressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(-1)} hitSlop={8}>
+            </RepeatingPressable>
+            <RepeatingPressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(-1)} hitSlop={8}>
               <Ionicons name="chevron-back" size={18} color="#fff" />
               <Text style={styles.jumpTxtPrimary}>1</Text>
-            </Pressable>
+            </RepeatingPressable>
           </View>
           <Pressable style={styles.playBtn} onPress={togglePlay} hitSlop={10}>
             <Ionicons
@@ -342,16 +404,16 @@ export default function PlayerScreen() {
             />
           </Pressable>
           <View style={styles.jumpCluster}>
-            <Pressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(1)} hitSlop={8}>
+            <RepeatingPressable style={styles.jumpBtnPrimary} onPress={() => jumpFrames(1)} hitSlop={8}>
               <Text style={styles.jumpTxtPrimary}>1</Text>
               <Ionicons name="chevron-forward" size={18} color="#fff" />
-            </Pressable>
-            <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(5)} hitSlop={8}>
+            </RepeatingPressable>
+            <RepeatingPressable style={styles.jumpBtn} onPress={() => jumpFrames(5)} hitSlop={8}>
               <Text style={styles.jumpTxt}>+5</Text>
-            </Pressable>
-            <Pressable style={styles.jumpBtn} onPress={() => jumpFrames(10)} hitSlop={8}>
+            </RepeatingPressable>
+            <RepeatingPressable style={styles.jumpBtn} onPress={() => jumpFrames(10)} hitSlop={8}>
               <Text style={styles.jumpTxt}>+10</Text>
-            </Pressable>
+            </RepeatingPressable>
           </View>
         </View>
 
@@ -363,6 +425,7 @@ export default function PlayerScreen() {
           onScrubEnd={onScrubEnd}
         />
       </View>
+      <Toast ref={toastRef} />
     </SafeAreaView>
   );
 }
