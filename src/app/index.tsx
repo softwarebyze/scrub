@@ -209,6 +209,7 @@ function FeaturesSection() {
     ["A–B loops", "Set In and Out. Replay the swing or take until it clicks."],
     ["Markers + tags", "Bookmark frames, label videos, search your library."],
     ["0.05× → 10× speed", "Crawl through impact. Or rip through selects."],
+    ["Save the frame", "Export a still without screenshot chrome — the Photos workaround people keep asking for."],
     ["Local-first", "Photos, Files, share sheet, drag-and-drop. Your bits stay yours."],
   ];
 

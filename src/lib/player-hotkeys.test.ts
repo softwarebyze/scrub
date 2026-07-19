@@ -33,6 +33,7 @@ eq(resolveHotkey({ ...base, key: "m" }), { type: "addMarker" }, "mark");
 eq(resolveHotkey({ ...base, key: "i" }), { type: "setIn" }, "in");
 eq(resolveHotkey({ ...base, key: "o" }), { type: "setOut" }, "out");
 eq(resolveHotkey({ ...base, key: "l" }), { type: "toggleLoop" }, "loop");
+eq(resolveHotkey({ ...base, key: "f" }), { type: "saveFrame" }, "save");
 eq(resolveHotkey({ ...base, key: "a", metaKey: true }), null, "meta ignored");
 
 eq(clampLoop(1, 3), { in: 1, out: 3 }, "clamp ok");

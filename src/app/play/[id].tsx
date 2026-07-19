@@ -20,6 +20,7 @@ import {
   type VideoRecord,
 } from "@/db/library";
 import { clampLoop, resolveHotkey } from "@/lib/player-hotkeys";
+import { saveFrame } from "@/lib/save-frame";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
@@ -381,6 +382,16 @@ export default function PlayerScreen() {
     });
   }, []);
 
+  const captureFrame = useCallback(async () => {
+    if (!record) return;
+    player.pause();
+    const result = await saveFrame(record.uri, currentTimeRef.current);
+    toastRef.current?.show(result.message);
+    if (result.ok && Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, [record, player]);
+
   // Desktop / web keyboard — the whole point of a scrubbing tool on a laptop.
   useEffect(() => {
     if (Platform.OS !== "web" || !record) return;
@@ -420,6 +431,9 @@ export default function PlayerScreen() {
         case "toggleMute":
           toggleMute();
           break;
+        case "saveFrame":
+          captureFrame();
+          break;
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -435,6 +449,7 @@ export default function PlayerScreen() {
     setOutPoint,
     toggleLoop,
     toggleMute,
+    captureFrame,
   ]);
 
   if (!record) {
@@ -455,7 +470,9 @@ export default function PlayerScreen() {
             <Ionicons name="chevron-back" size={22} color="#fff" />
           </Pressable>
           <TitleEditor value={title} onChange={onChangeTitle} />
-          <View style={styles.iconBtn} />
+          <Pressable style={styles.iconBtn} onPress={captureFrame} hitSlop={12}>
+            <Ionicons name="camera-outline" size={18} color="#fff" />
+          </Pressable>
         </View>
 
         <TagsEditor tags={tags} onChange={onChangeTags} />
@@ -553,7 +570,7 @@ export default function PlayerScreen() {
 
         {Platform.OS === "web" && (
           <Text style={styles.hotkeyHint}>
-            Space play · ←/→ frame · Shift±5 · Alt±10 · I/O loop · M mark · U mute
+            Space play · ←/→ frame · Shift±5 · Alt±10 · I/O loop · M mark · F save · U mute
           </Text>
         )}
       </View>

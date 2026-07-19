@@ -9,7 +9,8 @@ export type HotkeyAction =
   | { type: "setIn" }
   | { type: "setOut" }
   | { type: "toggleLoop" }
-  | { type: "toggleMute" };
+  | { type: "toggleMute" }
+  | { type: "saveFrame" };
 
 function stepFrames(e: { shiftKey: boolean; altKey: boolean }, dir: 1 | -1) {
   const n = e.altKey ? 10 : e.shiftKey ? 5 : 1;
@@ -32,6 +33,7 @@ export function resolveHotkey(e: {
   if (key === "o") return { type: "setOut" };
   if (key === "l") return { type: "toggleLoop" };
   if (key === "u") return { type: "toggleMute" };
+  if (key === "f" || key === "s") return { type: "saveFrame" };
   if (key === "[") return { type: "prevMarker" };
   if (key === "]") return { type: "nextMarker" };
 

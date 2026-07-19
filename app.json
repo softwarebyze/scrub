@@ -118,7 +118,15 @@
       ],
       "expo-status-bar",
       "expo-sqlite",
-      "expo-updates"
+      "expo-updates",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Scrub to save video frames to your photo library.",
+          "savePhotosPermission": "Allow Scrub to save video frames to your photo library.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ]
     ],
     "owner": "zackebenfeld",
     "extra": {
