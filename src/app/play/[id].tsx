@@ -87,7 +87,7 @@ export default function PlayerScreen() {
       if (!id) return;
       const r = await getVideo(id);
       if (cancelled || !r) {
-        if (!cancelled) router.replace("/");
+        if (!cancelled) router.replace("/library");
         return;
       }
       setRecord(r);
@@ -260,7 +260,7 @@ export default function PlayerScreen() {
       }).catch(() => {});
     }
     if (router.canGoBack()) router.back();
-    else router.replace("/");
+    else router.replace("/library");
   }, [record]);
 
   const addMarker = useCallback(() => {
