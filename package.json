@@ -7,7 +7,8 @@
     "typecheck": "tsc --noEmit",
     "knip": "knip",
     "test": "bun src/lib/player-hotkeys.test.ts",
-    "ci": "bun run typecheck && bun run knip && bun run test"
+    "ci": "bun run typecheck && bun run knip && bun run test",
+    "export:web": "expo export --platform web"
   },
   "dependencies": {
     "@expo-google-fonts/bebas-neue": "^0.4.1",
