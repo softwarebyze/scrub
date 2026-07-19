@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "knip": "knip",
+    "ci": "bun run typecheck && bun run knip"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -22,8 +24,8 @@
     "expo-splash-screen": "~56.0.10",
     "expo-sqlite": "~56.0.5",
     "expo-status-bar": "~56.0.4",
-    "expo-symbols": "~56.0.5",
     "expo-system-ui": "~56.0.5",
+    "expo-updates": "~56.0.22",
     "expo-video": "~56.1.4",
     "expo-web-browser": "~56.0.5",
     "react": "19.2.3",
@@ -38,6 +40,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "knip": "^6.27.0",
     "typescript": "~6.0.3"
   },
   "private": true
