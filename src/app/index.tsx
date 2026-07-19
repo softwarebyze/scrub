@@ -96,12 +96,14 @@ function TickWheelVisual() {
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Native driver isn't available on web Metro; keep JS path quiet there.
+    const native = Platform.OS !== "web";
     const driftLoop = Animated.loop(
       Animated.timing(drift, {
         toValue: 1,
         duration: 14000,
         easing: Easing.linear,
-        useNativeDriver: true,
+        useNativeDriver: native,
       }),
     );
     const pulseLoop = Animated.loop(
@@ -110,13 +112,13 @@ function TickWheelVisual() {
           toValue: 1,
           duration: 1600,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: native,
         }),
         Animated.timing(pulse, {
           toValue: 0,
           duration: 1600,
           easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver: native,
         }),
       ]),
     );
@@ -351,9 +353,14 @@ const styles = StyleSheet.create({
     bottom: 8,
     width: 2,
     backgroundColor: "#fff",
-    shadowColor: AMBER,
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
+    // Web prefers boxShadow; native keeps the amber bloom via shadow*.
+    ...(Platform.OS === "web"
+      ? ({ boxShadow: `0 0 12px ${AMBER}` } as object)
+      : {
+          shadowColor: AMBER,
+          shadowOpacity: 0.8,
+          shadowRadius: 8,
+        }),
   },
   wheelCaption: {
     color: FOG_DIM,
