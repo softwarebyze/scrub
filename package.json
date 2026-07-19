@@ -6,7 +6,8 @@
     "start": "expo start",
     "typecheck": "tsc --noEmit",
     "knip": "knip",
-    "ci": "bun run typecheck && bun run knip"
+    "test": "bun src/lib/player-hotkeys.test.ts",
+    "ci": "bun run typecheck && bun run knip && bun run test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
