@@ -12,8 +12,11 @@ import {
   View,
 } from "react-native";
 
+export type LibraryDensity = "compact" | "comfortable";
+
 type Props = {
   items: VideoRecord[];
+  density: LibraryDensity;
   onOpen: (rec: VideoRecord) => void;
   onRefresh: () => void;
 };
@@ -39,12 +42,18 @@ function relativeAge(ts: number) {
   return new Date(ts).toLocaleDateString();
 }
 
-export function LibraryList({ items, onOpen, onRefresh }: Props) {
+export function LibraryList({ items, density, onOpen, onRefresh }: Props) {
+  const compact = density === "compact";
   const renderItem = useCallback(
     ({ item }: { item: VideoRecord }) => (
-      <Row item={item} onOpen={onOpen} onRefresh={onRefresh} />
+      <Row
+        item={item}
+        compact={compact}
+        onOpen={onOpen}
+        onRefresh={onRefresh}
+      />
     ),
-    [onOpen, onRefresh]
+    [compact, onOpen, onRefresh],
   );
 
   return (
@@ -52,7 +61,7 @@ export function LibraryList({ items, onOpen, onRefresh }: Props) {
       data={items}
       keyExtractor={(it) => it.id}
       renderItem={renderItem}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={[styles.list, compact && styles.listCompact]}
       removeClippedSubviews
       windowSize={9}
       maxToRenderPerBatch={12}
@@ -63,18 +72,23 @@ export function LibraryList({ items, onOpen, onRefresh }: Props) {
 
 const Row = memo(function Row({
   item,
+  compact,
   onOpen,
   onRefresh,
 }: {
   item: VideoRecord;
+  compact: boolean;
   onOpen: (r: VideoRecord) => void;
   onRefresh: () => void;
 }) {
   const progress =
-    item.duration > 0 ? Math.max(0, Math.min(1, item.lastTime / item.duration)) : 0;
+    item.duration > 0
+      ? Math.max(0, Math.min(1, item.lastTime / item.duration))
+      : 0;
 
   const onLongPress = useCallback(() => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (Platform.OS !== "web")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const doDelete = async () => {
       await deleteVideo(item.id);
       onRefresh();
@@ -89,36 +103,49 @@ const Row = memo(function Row({
     ]);
   }, [item, onRefresh]);
 
+  const meta = [
+    relativeAge(item.lastOpenedAt),
+    item.duration > 0 ? fmtTime(item.duration) : null,
+    item.markers.length > 0
+      ? `${item.markers.length} marker${item.markers.length === 1 ? "" : "s"}`
+      : null,
+    compact && item.tags.length > 0 ? item.tags.slice(0, 2).join(" · ") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <Pressable
       onPress={() => onOpen(item)}
       onLongPress={onLongPress}
       style={({ pressed }) => [
         styles.row,
+        compact && styles.rowCompact,
         pressed && { opacity: 0.7, transform: [{ scale: 0.99 }] },
       ]}
     >
-      <View style={styles.thumb}>
-        <Ionicons name="film" size={26} color="rgba(255,255,255,0.5)" />
+      <View style={[styles.thumb, compact && styles.thumbCompact]}>
+        <Ionicons
+          name="film"
+          size={compact ? 18 : 26}
+          color="rgba(255,255,255,0.5)"
+        />
         {progress > 0 && (
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+            <View
+              style={[styles.progressFill, { width: `${progress * 100}%` }]}
+            />
           </View>
         )}
       </View>
-      <View style={styles.body}>
-        <Text style={styles.title} numberOfLines={1}>
+      <View style={[styles.body, compact && styles.bodyCompact]}>
+        <Text style={[styles.title, compact && styles.titleCompact]} numberOfLines={1}>
           {item.title || "Untitled"}
         </Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.meta}>
-            {relativeAge(item.lastOpenedAt)}
-            {item.duration > 0 && ` · ${fmtTime(item.duration)}`}
-            {item.markers.length > 0 &&
-              ` · ${item.markers.length} marker${item.markers.length === 1 ? "" : "s"}`}
-          </Text>
-        </View>
-        {item.tags.length > 0 && (
+        <Text style={styles.meta} numberOfLines={1}>
+          {meta}
+        </Text>
+        {!compact && item.tags.length > 0 && (
           <View style={styles.tagRow}>
             {item.tags.slice(0, 4).map((t) => (
               <View key={t} style={styles.tag}>
@@ -131,13 +158,14 @@ const Row = memo(function Row({
           </View>
         )}
       </View>
-      <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
+      <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" />
     </Pressable>
   );
 });
 
 const styles = StyleSheet.create({
   list: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 24, gap: 8 },
+  listCompact: { gap: 4 },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -148,6 +176,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",
   },
+  rowCompact: {
+    gap: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
   thumb: {
     width: 64,
     height: 64,
@@ -157,19 +191,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
+  thumbCompact: { width: 40, height: 40, borderRadius: 8 },
   progressTrack: {
     position: "absolute",
-    left: 6,
-    right: 6,
-    bottom: 6,
-    height: 3,
+    left: 4,
+    right: 4,
+    bottom: 4,
+    height: 2,
     borderRadius: 2,
     backgroundColor: "rgba(255,255,255,0.15)",
   },
   progressFill: { height: "100%", backgroundColor: "#ff3b30", borderRadius: 2 },
   body: { flex: 1, gap: 4 },
+  bodyCompact: { gap: 1 },
   title: { color: "#fff", fontSize: 15, fontWeight: "700", letterSpacing: -0.2 },
-  metaRow: { flexDirection: "row" },
+  titleCompact: { fontSize: 14, fontWeight: "600" },
   meta: { color: "rgba(255,255,255,0.5)", fontSize: 12 },
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 2 },
   tag: {

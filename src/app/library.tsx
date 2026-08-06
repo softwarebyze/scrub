@@ -1,4 +1,4 @@
-import { LibraryList } from "@/components/library-list";
+import { LibraryList, type LibraryDensity } from "@/components/library-list";
 import { LibrarySearch } from "@/components/library-search";
 import {
   addVideo,
@@ -22,6 +22,8 @@ export default function Library() {
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  // Compact by default — mobile real estate is precious.
+  const [density, setDensity] = useState<LibraryDensity>("compact");
 
   const refresh = useCallback(async () => {
     const [list, tags] = await Promise.all([
@@ -131,6 +133,26 @@ export default function Library() {
             </Text>
           </Pressable>
           <View style={styles.headerActions}>
+            {hasAny && (
+              <Pressable
+                style={styles.headerBtn}
+                onPress={() =>
+                  setDensity((d) => (d === "compact" ? "comfortable" : "compact"))
+                }
+                hitSlop={10}
+                accessibilityLabel={
+                  density === "compact"
+                    ? "Expand library rows"
+                    : "Minimize library rows"
+                }
+              >
+                <Ionicons
+                  name={density === "compact" ? "expand-outline" : "contract-outline"}
+                  size={18}
+                  color="#fff"
+                />
+              </Pressable>
+            )}
             <Pressable style={styles.headerBtn} onPress={pickFromFiles} hitSlop={10}>
               <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
             </Pressable>
@@ -166,6 +188,7 @@ export default function Library() {
       ) : (
         <LibraryList
           items={items}
+          density={density}
           onOpen={(rec) =>
             router.push({ pathname: "/play/[id]", params: { id: rec.id } })
           }
