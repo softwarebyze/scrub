@@ -169,7 +169,6 @@ function ZoomableVideoInner({ player }: Props) {
       <GestureDetector gesture={composed}>
         <Animated.View
           style={styles.hit}
-          // @ts-expect-error web CSS — stop browser pinch-zoom / scroll steal
           collapsable={false}
         />
       </GestureDetector>
@@ -183,7 +182,7 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, width: "100%", alignSelf: "stretch", overflow: "hidden" },
   video: { width: "100%", height: "100%", backgroundColor: "transparent" },
   hit: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "transparent",
     // @ts-ignore — RN web
     touchAction: "none",
