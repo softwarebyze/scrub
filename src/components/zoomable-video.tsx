@@ -184,8 +184,7 @@ const styles = StyleSheet.create({
   hit: {
     ...StyleSheet.absoluteFill,
     backgroundColor: "transparent",
-    // @ts-ignore — RN web
+    // @ts-ignore — RN web: prevent browser gesture interception
     touchAction: "none",
-    cursor: "grab",
   },
 });
