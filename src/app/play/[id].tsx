@@ -56,7 +56,8 @@ export default function PlayerScreen() {
   const [tags, setTags] = useState<string[]>([]);
   const [loopIn, setLoopIn] = useState<number | null>(null);
   const [loopOut, setLoopOut] = useState<number | null>(null);
-  const [looping, setLooping] = useState(false);
+  const [abLooping, setAbLooping] = useState(false);
+  const [fullLooping, setFullLooping] = useState(false);
   const [muted, setMuted] = useState(false);
   const wasPlayingRef = useRef(false);
   const initialSeekRef = useRef<number | null>(null);
@@ -141,14 +142,43 @@ export default function PlayerScreen() {
     if (!record) return;
     const sub = player.addListener("timeUpdate", ({ currentTime: t }) => {
       setCurrentTime(t);
-      const range = looping ? clampLoop(loopIn, loopOut) : null;
+      const range = abLooping ? clampLoop(loopIn, loopOut) : null;
       if (range && t >= range.out - 0.02) {
         player.currentTime = range.in;
         setCurrentTime(range.in);
       }
     });
     return () => sub.remove();
-  }, [record, player, looping, loopIn, loopOut]);
+  }, [record, player, abLooping, loopIn, loopOut]);
+
+  // Full-video loop uses the player's native loop flag. A–B loop owns seeking
+  // itself, so turn native loop off whenever an A–B range is active.
+  useEffect(() => {
+    const range = clampLoop(loopIn, loopOut);
+    try {
+      player.loop = Boolean(fullLooping && !(abLooping && range));
+    } catch {}
+  }, [player, fullLooping, abLooping, loopIn, loopOut]);
+
+  // When playback hits the natural end without looping, park cleanly at the
+  // last frame so Play can restart without feeling stuck.
+  useEffect(() => {
+    if (!record) return;
+    const sub = player.addListener("playToEnd", () => {
+      const range = abLooping ? clampLoop(loopIn, loopOut) : null;
+      if (range) {
+        player.currentTime = range.in;
+        setCurrentTime(range.in);
+        player.play();
+        return;
+      }
+      if (fullLooping) return; // player.loop handles it
+      const end = Math.max(0, durationRef.current - FRAME);
+      player.currentTime = end;
+      setCurrentTime(end);
+    });
+    return () => sub.remove();
+  }, [record, player, abLooping, fullLooping, loopIn, loopOut]);
 
   useEffect(() => {
     try {
@@ -374,13 +404,19 @@ export default function PlayerScreen() {
 
   const toggleLoop = useCallback(() => {
     const range = clampLoop(loopIn, loopOut);
-    if (!range) {
-      toastRef.current?.show("Set In and Out first");
+    if (range) {
+      setAbLooping((v) => {
+        const next = !v;
+        if (next) setFullLooping(false);
+        toastRef.current?.show(next ? "A–B loop on" : "A–B loop off");
+        return next;
+      });
       return;
     }
-    setLooping((v) => {
+    setFullLooping((v) => {
       const next = !v;
-      toastRef.current?.show(next ? "A–B loop on" : "A–B loop off");
+      setAbLooping(false);
+      toastRef.current?.show(next ? "Loop on" : "Loop off");
       return next;
     });
   }, [loopIn, loopOut]);
@@ -388,7 +424,7 @@ export default function PlayerScreen() {
   const clearLoop = useCallback(() => {
     setLoopIn(null);
     setLoopOut(null);
-    setLooping(false);
+    setAbLooping(false);
   }, []);
 
   const toggleMute = useCallback(() => {
@@ -530,7 +566,8 @@ export default function PlayerScreen() {
         <LoopBar
           inPoint={loopIn}
           outPoint={loopOut}
-          looping={looping}
+          abLooping={abLooping}
+          fullLooping={fullLooping}
           muted={muted}
           onSetIn={setInPoint}
           onSetOut={setOutPoint}
