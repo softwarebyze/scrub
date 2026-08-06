@@ -10,7 +10,9 @@ export type HotkeyAction =
   | { type: "setOut" }
   | { type: "toggleLoop" }
   | { type: "toggleMute" }
-  | { type: "saveFrame" };
+  | { type: "saveFrame" }
+  | { type: "jumpStart" }
+  | { type: "jumpEnd" };
 
 function stepFrames(e: { shiftKey: boolean; altKey: boolean }, dir: 1 | -1) {
   const n = e.altKey ? 10 : e.shiftKey ? 5 : 1;
@@ -36,6 +38,9 @@ export function resolveHotkey(e: {
   if (key === "f" || key === "s") return { type: "saveFrame" };
   if (key === "[") return { type: "prevMarker" };
   if (key === "]") return { type: "nextMarker" };
+
+  if (key === "Home" || key === "0") return { type: "jumpStart" };
+  if (key === "End") return { type: "jumpEnd" };
 
   if (key === "ArrowLeft" || key === "j" || key === ",") {
     return { type: "jumpFrames", frames: stepFrames(e, -1) };

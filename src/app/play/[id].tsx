@@ -253,6 +253,23 @@ export default function PlayerScreen() {
     [player]
   );
 
+  const jumpToStart = useCallback(() => {
+    player.pause();
+    player.currentTime = 0;
+    setCurrentTime(0);
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    toastRef.current?.show("Start");
+  }, [player]);
+
+  const jumpToEnd = useCallback(() => {
+    player.pause();
+    const end = Math.max(0, durationRef.current - FRAME);
+    player.currentTime = end;
+    setCurrentTime(end);
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    toastRef.current?.show("End");
+  }, [player]);
+
   const goBack = useCallback(() => {
     if (record) {
       setPlaybackState(record.id, {
@@ -434,6 +451,12 @@ export default function PlayerScreen() {
         case "saveFrame":
           captureFrame();
           break;
+        case "jumpStart":
+          jumpToStart();
+          break;
+        case "jumpEnd":
+          jumpToEnd();
+          break;
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -450,6 +473,8 @@ export default function PlayerScreen() {
     toggleLoop,
     toggleMute,
     captureFrame,
+    jumpToStart,
+    jumpToEnd,
   ]);
 
   if (!record) {
@@ -526,6 +551,9 @@ export default function PlayerScreen() {
         />
 
         <View style={styles.controls}>
+          <Pressable style={styles.edgeBtn} onPress={jumpToStart} hitSlop={8}>
+            <Ionicons name="play-skip-back" size={18} color="#fff" />
+          </Pressable>
           <View style={styles.jumpCluster}>
             <RepeatingPressable style={styles.jumpBtn} onPress={() => jumpFrames(-10)} hitSlop={8}>
               <Text style={styles.jumpTxt}>−10</Text>
@@ -558,6 +586,9 @@ export default function PlayerScreen() {
               <Text style={styles.jumpTxt}>+10</Text>
             </RepeatingPressable>
           </View>
+          <Pressable style={styles.edgeBtn} onPress={jumpToEnd} hitSlop={8}>
+            <Ionicons name="play-skip-forward" size={18} color="#fff" />
+          </Pressable>
         </View>
 
         <Scrubber
@@ -570,7 +601,7 @@ export default function PlayerScreen() {
 
         {Platform.OS === "web" && (
           <Text style={styles.hotkeyHint}>
-            Space play · ←/→ frame · Shift±5 · Alt±10 · I/O loop · M mark · F save · U mute
+            Space · ←/→ · Home/End · I/O loop · M mark · F save · U mute
           </Text>
         )}
       </View>
@@ -636,6 +667,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   jumpCluster: { flexDirection: "row", alignItems: "center", gap: 6 },
+  edgeBtn: {
+    width: 36,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   jumpBtn: {
     minWidth: 38,
     height: 38,
