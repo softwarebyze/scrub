@@ -1,5 +1,6 @@
 import { LoopBar } from "@/components/loop-bar";
 import { MarkersBar } from "@/components/markers-bar";
+import { MotionBar } from "@/components/motion-bar";
 import { RepeatingPressable } from "@/components/repeating-pressable";
 import { Scrubber } from "@/components/scrubber";
 import { SourceChip } from "@/components/source-chip";
@@ -351,6 +352,27 @@ export default function PlayerScreen() {
     if (added) toastRef.current?.show("Marker added");
   }, []);
 
+  const addMarkersAt = useCallback((times: number[]) => {
+    let added = 0;
+    setMarkers((prev) => {
+      let next = prev;
+      for (const t of times) {
+        if (next.some((m) => Math.abs(m - t) < 0.01)) continue;
+        if (next === prev) next = [...prev];
+        next.push(t);
+        added++;
+      }
+      return next === prev ? prev : next.sort((a, b) => a - b);
+    });
+    if (added) {
+      toastRef.current?.show(
+        added === 1 ? "Marker added" : `${added} markers added`,
+      );
+      if (Platform.OS !== "web")
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, []);
+
   const clearAllMarkers = useCallback(() => {
     setMarkers([]);
     if (Platform.OS !== "web")
@@ -572,6 +594,16 @@ export default function PlayerScreen() {
 
         {chromeExpanded && (
           <>
+            <MotionBar
+              uri={record.uri}
+              duration={duration}
+              currentTime={currentTime}
+              rangeStart={loopIn}
+              rangeEnd={loopOut}
+              onSeek={jumpToMarker}
+              onMarkTimes={addMarkersAt}
+            />
+
             <ThumbStrip
               uri={record.uri}
               player={player}
