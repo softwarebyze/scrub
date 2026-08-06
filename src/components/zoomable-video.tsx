@@ -154,6 +154,10 @@ function ZoomableVideoInner({ player }: Props) {
             style={styles.video}
             contentFit="contain"
             nativeControls={false}
+            // Mobile Safari: keep playback in-page — no giant play overlay /
+            // accidental fullscreen from the default video chrome.
+            playsInline
+            fullscreenOptions={{ enable: false }}
             allowsPictureInPicture={false}
           />
         </Animated.View>
