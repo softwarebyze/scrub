@@ -6,7 +6,7 @@
     "start": "expo start",
     "typecheck": "tsc --noEmit",
     "knip": "knip",
-    "test": "bun src/lib/player-hotkeys.test.ts",
+    "test": "bun src/lib/player-hotkeys.test.ts && bun src/lib/import-video.test.ts",
     "ci": "bun run typecheck && bun run knip && bun run test",
     "export:web": "expo export --platform web"
   },
@@ -16,6 +16,7 @@
     "@expo/vector-icons": "^15.0.3",
     "expo": "^56.0.4",
     "expo-build-properties": "~56.0.14",
+    "expo-clipboard": "~56.0.4",
     "expo-constants": "~56.0.15",
     "expo-dev-client": "~56.0.15",
     "expo-document-picker": "~56.0.4",
