@@ -15,6 +15,11 @@ type Props = {
 const MIN_SCALE = 1;
 const MAX_SCALE = 8;
 
+/**
+ * Pinch / pan / double-tap zoom over expo-video.
+ * Gestures live on a transparent overlay so the underlying <video> (esp. Safari)
+ * cannot steal touches or pop its own chrome.
+ */
 function ZoomableVideoInner({ player }: Props) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -52,7 +57,10 @@ function ZoomableVideoInner({ player }: Props) {
       savedTy.set(ty.get());
     })
     .onUpdate((e) => {
-      const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, savedScale.get() * e.scale));
+      const next = Math.max(
+        MIN_SCALE,
+        Math.min(MAX_SCALE, savedScale.get() * e.scale),
+      );
       scale.set(next);
       const c = clampTranslate(next, tx.get(), ty.get());
       tx.set(c.x);
@@ -65,7 +73,6 @@ function ZoomableVideoInner({ player }: Props) {
       if (scale.get() <= 1.02) resetZoom();
     });
 
-  // Two-finger pan — always works.
   const panTwo = Gesture.Pan()
     .minPointers(2)
     .maxPointers(2)
@@ -77,7 +84,7 @@ function ZoomableVideoInner({ player }: Props) {
       const c = clampTranslate(
         scale.get(),
         savedTx.get() + e.translationX,
-        savedTy.get() + e.translationY
+        savedTy.get() + e.translationY,
       );
       tx.set(c.x);
       ty.set(c.y);
@@ -87,12 +94,10 @@ function ZoomableVideoInner({ player }: Props) {
       savedTy.set(ty.get());
     });
 
-  // Single-finger pan — only active when zoomed in. Won't conflict with double-tap.
   const panOne = Gesture.Pan()
     .minPointers(1)
     .maxPointers(1)
     .minDistance(2)
-    .enabled(true)
     .onStart(() => {
       savedTx.set(tx.get());
       savedTy.set(ty.get());
@@ -102,7 +107,7 @@ function ZoomableVideoInner({ player }: Props) {
       const c = clampTranslate(
         scale.get(),
         savedTx.get() + e.translationX,
-        savedTy.get() + e.translationY
+        savedTy.get() + e.translationY,
       );
       tx.set(c.x);
       ty.set(c.y);
@@ -124,11 +129,10 @@ function ZoomableVideoInner({ player }: Props) {
       }
     });
 
-  // Order matters: doubleTap should win over panOne for taps.
   const composed = Gesture.Simultaneous(
     pinch,
     panTwo,
-    Gesture.Exclusive(doubleTap, panOne)
+    Gesture.Exclusive(doubleTap, panOne),
   );
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -140,29 +144,36 @@ function ZoomableVideoInner({ player }: Props) {
   }));
 
   return (
-    <GestureDetector gesture={composed}>
-      <View
-        style={styles.wrap}
-        onLayout={(e) => {
-          w.set(e.nativeEvent.layout.width);
-          h.set(e.nativeEvent.layout.height);
-        }}
+    <View
+      style={styles.wrap}
+      onLayout={(e) => {
+        w.set(e.nativeEvent.layout.width);
+        h.set(e.nativeEvent.layout.height);
+      }}
+    >
+      <Animated.View
+        style={[StyleSheet.absoluteFill, animatedStyle]}
+        pointerEvents="none"
       >
-        <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
-          <VideoView
-            player={player}
-            style={styles.video}
-            contentFit="contain"
-            nativeControls={false}
-            // Mobile Safari: keep playback in-page — no giant play overlay /
-            // accidental fullscreen from the default video chrome.
-            playsInline
-            fullscreenOptions={{ enable: false }}
-            allowsPictureInPicture={false}
-          />
-        </Animated.View>
-      </View>
-    </GestureDetector>
+        <VideoView
+          player={player}
+          style={styles.video}
+          contentFit="contain"
+          nativeControls={false}
+          playsInline
+          fullscreenOptions={{ enable: false }}
+          allowsPictureInPicture={false}
+          pointerEvents="none"
+        />
+      </Animated.View>
+      <GestureDetector gesture={composed}>
+        <Animated.View
+          style={styles.hit}
+          // @ts-expect-error web CSS — stop browser pinch-zoom / scroll steal
+          collapsable={false}
+        />
+      </GestureDetector>
+    </View>
   );
 }
 
@@ -171,4 +182,11 @@ export const ZoomableVideo = memo(ZoomableVideoInner);
 const styles = StyleSheet.create({
   wrap: { flex: 1, width: "100%", alignSelf: "stretch", overflow: "hidden" },
   video: { width: "100%", height: "100%", backgroundColor: "transparent" },
+  hit: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "transparent",
+    // @ts-ignore — RN web
+    touchAction: "none",
+    cursor: "grab",
+  },
 });
