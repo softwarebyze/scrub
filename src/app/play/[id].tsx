@@ -59,6 +59,8 @@ export default function PlayerScreen() {
   const [abLooping, setAbLooping] = useState(false);
   const [fullLooping, setFullLooping] = useState(false);
   const [muted, setMuted] = useState(false);
+  // Default collapsed — transport + scrubber stay; tags/thumbs/speed/loop/markers hide.
+  const [chromeExpanded, setChromeExpanded] = useState(false);
   const wasPlayingRef = useRef(false);
   const initialSeekRef = useRef<number | null>(null);
   const toastRef = useRef<ToastHandle>(null);
@@ -531,12 +533,29 @@ export default function PlayerScreen() {
             <Ionicons name="chevron-back" size={22} color="#fff" />
           </Pressable>
           <TitleEditor value={title} onChange={onChangeTitle} />
-          <Pressable style={styles.iconBtn} onPress={captureFrame} hitSlop={12}>
-            <Ionicons name="camera-outline" size={18} color="#fff" />
-          </Pressable>
+          <View style={styles.topBarActions}>
+            <Pressable
+              style={styles.iconBtn}
+              onPress={() => {
+                setChromeExpanded((v) => !v);
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+              }}
+              hitSlop={12}
+              accessibilityLabel={chromeExpanded ? "Minimize controls" : "Expand controls"}
+            >
+              <Ionicons
+                name={chromeExpanded ? "contract-outline" : "expand-outline"}
+                size={18}
+                color="#fff"
+              />
+            </Pressable>
+            <Pressable style={styles.iconBtn} onPress={captureFrame} hitSlop={12}>
+              <Ionicons name="camera-outline" size={18} color="#fff" />
+            </Pressable>
+          </View>
         </View>
 
-        <TagsEditor tags={tags} onChange={onChangeTags} />
+        {chromeExpanded && <TagsEditor tags={tags} onChange={onChangeTags} />}
 
         <Timeline
           duration={duration}
@@ -551,41 +570,74 @@ export default function PlayerScreen() {
           </View>
         </View>
 
-        <ThumbStrip
-          uri={record.uri}
-          player={player}
-          duration={duration}
-          currentTime={currentTime}
-          markers={sortedMarkers}
-          onSeek={jumpToMarker}
-          onAddMarkerAt={addMarkerAt}
-        />
+        {chromeExpanded && (
+          <>
+            <ThumbStrip
+              uri={record.uri}
+              player={player}
+              duration={duration}
+              currentTime={currentTime}
+              markers={sortedMarkers}
+              onSeek={jumpToMarker}
+              onAddMarkerAt={addMarkerAt}
+            />
 
-        <SpeedBar speed={speed} onChange={setSpeed} />
+            <SpeedBar speed={speed} onChange={setSpeed} />
 
-        <LoopBar
-          inPoint={loopIn}
-          outPoint={loopOut}
-          abLooping={abLooping}
-          fullLooping={fullLooping}
-          muted={muted}
-          onSetIn={setInPoint}
-          onSetOut={setOutPoint}
-          onToggleLoop={toggleLoop}
-          onClear={clearLoop}
-          onToggleMute={toggleMute}
-        />
+            <LoopBar
+              inPoint={loopIn}
+              outPoint={loopOut}
+              abLooping={abLooping}
+              fullLooping={fullLooping}
+              muted={muted}
+              onSetIn={setInPoint}
+              onSetOut={setOutPoint}
+              onToggleLoop={toggleLoop}
+              onClear={clearLoop}
+              onToggleMute={toggleMute}
+            />
 
-        <MarkersBar
-          markers={sortedMarkers}
-          currentTime={currentTime}
-          onAdd={addMarker}
-          onJump={jumpToMarker}
-          onRemove={removeMarker}
-          onPrev={prevMarker}
-          onNext={nextMarker}
-          onClearAll={clearAllMarkers}
-        />
+            <MarkersBar
+              markers={sortedMarkers}
+              currentTime={currentTime}
+              onAdd={addMarker}
+              onJump={jumpToMarker}
+              onRemove={removeMarker}
+              onPrev={prevMarker}
+              onNext={nextMarker}
+              onClearAll={clearAllMarkers}
+            />
+          </>
+        )}
+
+        {!chromeExpanded && (
+          <View style={styles.essentials}>
+            <Pressable style={styles.essentialBtn} onPress={toggleMute} hitSlop={8}>
+              <Ionicons
+                name={muted ? "volume-mute" : "volume-medium"}
+                size={16}
+                color="#fff"
+              />
+            </Pressable>
+            <Pressable style={styles.essentialBtn} onPress={toggleLoop} hitSlop={8}>
+              <Ionicons
+                name="repeat"
+                size={16}
+                color={abLooping || fullLooping ? "#ff3b30" : "#fff"}
+              />
+            </Pressable>
+            <Pressable style={styles.essentialBtn} onPress={addMarker} hitSlop={8}>
+              <Ionicons name="bookmark-outline" size={16} color="#fff" />
+            </Pressable>
+            <Pressable
+              style={styles.essentialBtn}
+              onPress={() => setChromeExpanded(true)}
+              hitSlop={8}
+            >
+              <Text style={styles.essentialMore}>more</Text>
+            </Pressable>
+          </View>
+        )}
 
         <View style={styles.controls}>
           <Pressable style={styles.edgeBtn} onPress={jumpToStart} hitSlop={8}>
@@ -663,6 +715,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     gap: 12,
   },
+  topBarActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   iconBtn: {
     width: 34,
     height: 34,
@@ -687,6 +740,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   loader: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
+  essentials: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  essentialBtn: {
+    minWidth: 36,
+    height: 32,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  essentialMore: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 12,
+    fontWeight: "600",
+    // @ts-ignore
+    userSelect: "none",
+  },
   controls: {
     flexDirection: "row",
     alignItems: "center",
