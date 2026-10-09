@@ -109,6 +109,7 @@ function ThumbStripInner({
 }: Props) {
   const [thumbs, setThumbs] = useState<Thumb[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadedCount, setLoadedCount] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const cancelledRef = useRef({ current: false });
   // Suppress auto-scroll only while the user is actively dragging the strip,
@@ -121,6 +122,7 @@ function ThumbStripInner({
     setPrevSourceKey(sourceKey);
     setThumbs([]);
     setLoading(false);
+    setLoadedCount(0);
   }
 
   useEffect(() => {
@@ -128,6 +130,7 @@ function ThumbStripInner({
     cancelledRef.current = { current: false };
     if (!uri || !duration || duration < 0.05) return;
     setLoading(true);
+    setLoadedCount(0);
 
     const times: number[] = [];
     for (let i = 0; i < COUNT; i++) {
@@ -138,6 +141,8 @@ function ThumbStripInner({
 
     const flush = (idx: number) => {
       if (cancelToken.current) return;
+      const n = results.filter(Boolean).length;
+      setLoadedCount(n);
       if (idx % 4 === 0 || idx === COUNT - 1) {
         setThumbs(results.filter(Boolean));
       }
@@ -162,11 +167,16 @@ function ThumbStripInner({
           if (cancelToken.current) return;
           for (let i = 0; i < out.length; i++) {
             results[i] = { time: times[i], src: out[i] };
+            if (i % 4 === 0 || i === out.length - 1) {
+              setLoadedCount(i + 1);
+              setThumbs(results.filter(Boolean));
+            }
           }
         } catch {}
       }
       if (!cancelToken.current) {
         setThumbs(results.filter(Boolean));
+        setLoadedCount(results.filter(Boolean).length);
         setLoading(false);
       }
     };
@@ -242,10 +252,12 @@ function ThumbStripInner({
           );
         })}
       </ScrollView>
-      {loading && thumbs.length < 4 && (
+      {loading && (
         <View style={styles.loading} pointerEvents="none">
           <ActivityIndicator size="small" color="#fff" />
-          <Text style={styles.loadingText}>generating frames…</Text>
+          <Text style={styles.loadingText}>
+            frames {loadedCount}/{COUNT}
+          </Text>
         </View>
       )}
       {thumbs.length > 0 && !loading && (

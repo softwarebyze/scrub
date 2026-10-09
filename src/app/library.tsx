@@ -1,4 +1,4 @@
-import { LibraryList } from "@/components/library-list";
+import { LibraryList, type LibraryDensity } from "@/components/library-list";
 import { LibrarySearch } from "@/components/library-search";
 import {
   addVideo,
@@ -7,13 +7,22 @@ import {
   type VideoRecord,
   type VideoSourceKind,
 } from "@/db/library";
+import { isVideoFile, parseClipboardVideoUrl } from "@/lib/import-video";
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Library() {
@@ -22,6 +31,9 @@ export default function Library() {
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  // Compact by default — mobile real estate is precious.
+  const [density, setDensity] = useState<LibraryDensity>("compact");
+  const [importing, setImporting] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [list, tags] = await Promise.all([
@@ -40,9 +52,39 @@ export default function Library() {
   );
 
   const openVideo = useCallback(async (uri: string, source: VideoSourceKind) => {
-    const rec = await addVideo({ uri, source });
-    router.push({ pathname: "/play/[id]", params: { id: rec.id } });
+    setImporting(source === "files" || source === "drop" ? "Importing video…" : "Opening…");
+    try {
+      const rec = await addVideo({ uri, source });
+      router.push({ pathname: "/play/[id]", params: { id: rec.id } });
+    } finally {
+      setImporting(null);
+    }
   }, []);
+
+  const pasteFromClipboard = useCallback(async () => {
+    try {
+      if (Platform.OS === "web" && typeof navigator !== "undefined") {
+        // Prefer file paste via the paste event; this button handles URL text.
+        const text = await navigator.clipboard.readText();
+        const url = parseClipboardVideoUrl(text);
+        if (url) {
+          await openVideo(url, "url");
+          return;
+        }
+        alert("Clipboard has no video URL. Paste a .mp4/.mov link, or ⌘V a video file.");
+        return;
+      }
+      const text = await Clipboard.getStringAsync();
+      const url = parseClipboardVideoUrl(text);
+      if (url) {
+        await openVideo(url, "url");
+        return;
+      }
+      // Some platforms expose image/video via clipboard — try hasImageAsync path later.
+    } catch {
+      // permission / empty
+    }
+  }, [openVideo]);
 
   const pickFromLibrary = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -54,7 +96,9 @@ export default function Library() {
       preferredAssetRepresentationMode:
         ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
     });
-    if (!res.canceled && res.assets[0]) openVideo(res.assets[0].uri, "photos");
+    if (!res.canceled && res.assets[0]) {
+      await openVideo(res.assets[0].uri, "photos");
+    }
   }, [openVideo]);
 
   const pickFromFiles = useCallback(async () => {
@@ -63,7 +107,9 @@ export default function Library() {
       copyToCacheDirectory: true,
       multiple: false,
     });
-    if (!res.canceled && res.assets[0]) openVideo(res.assets[0].uri, "files");
+    if (!res.canceled && res.assets[0]) {
+      await openVideo(res.assets[0].uri, "files");
+    }
   }, [openVideo]);
 
   const handleIncomingUrl = useCallback(
@@ -99,15 +145,43 @@ export default function Library() {
     };
     const onDrop = (e: DragEvent) => {
       const f = e.dataTransfer?.files?.[0];
-      if (!f || !f.type.startsWith("video/")) return;
+      if (!f || !isVideoFile(f)) return;
       e.preventDefault();
-      openVideo(URL.createObjectURL(f), "drop");
+      setImporting(`Importing ${f.name || "video"}…`);
+      openVideo(URL.createObjectURL(f), "drop").finally(() => setImporting(null));
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (items) {
+        for (const item of items) {
+          if (item.kind === "file") {
+            const f = item.getAsFile();
+            if (f && isVideoFile(f)) {
+              e.preventDefault();
+              setImporting(`Importing ${f.name || "video"}…`);
+              openVideo(URL.createObjectURL(f), "drop").finally(() =>
+                setImporting(null),
+              );
+              return;
+            }
+          }
+        }
+      }
+      const text = e.clipboardData?.getData("text") ?? "";
+      const url = parseClipboardVideoUrl(text);
+      if (url) {
+        e.preventDefault();
+        setImporting("Opening pasted URL…");
+        openVideo(url, "url").finally(() => setImporting(null));
+      }
     };
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("drop", onDrop);
+    window.addEventListener("paste", onPaste);
     return () => {
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
+      window.removeEventListener("paste", onPaste);
     };
   }, [openVideo]);
 
@@ -131,6 +205,29 @@ export default function Library() {
             </Text>
           </Pressable>
           <View style={styles.headerActions}>
+            {hasAny && (
+              <Pressable
+                style={styles.headerBtn}
+                onPress={() =>
+                  setDensity((d) => (d === "compact" ? "comfortable" : "compact"))
+                }
+                hitSlop={10}
+                accessibilityLabel={
+                  density === "compact"
+                    ? "Expand library rows"
+                    : "Minimize library rows"
+                }
+              >
+                <Ionicons
+                  name={density === "compact" ? "expand-outline" : "contract-outline"}
+                  size={18}
+                  color="#fff"
+                />
+              </Pressable>
+            )}
+            <Pressable style={styles.headerBtn} onPress={pasteFromClipboard} hitSlop={10}>
+              <Ionicons name="clipboard-outline" size={18} color="#fff" />
+            </Pressable>
             <Pressable style={styles.headerBtn} onPress={pickFromFiles} hitSlop={10}>
               <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
             </Pressable>
@@ -162,15 +259,29 @@ export default function Library() {
           searching={Boolean(search || activeTag)}
           onLibrary={pickFromLibrary}
           onFiles={pickFromFiles}
+          onPaste={pasteFromClipboard}
         />
       ) : (
         <LibraryList
           items={items}
+          density={density}
           onOpen={(rec) =>
             router.push({ pathname: "/play/[id]", params: { id: rec.id } })
           }
           onRefresh={refresh}
         />
+      )}
+
+      {importing && (
+        <View style={styles.importOverlay} pointerEvents="auto">
+          <View style={styles.importCard}>
+            <ActivityIndicator color="#fff" size="large" />
+            <Text style={styles.importTitle}>{importing}</Text>
+            <Text style={styles.importSub}>
+              Large videos can take a moment to copy onto the device.
+            </Text>
+          </View>
+        </View>
       )}
     </SafeAreaView>
   );
@@ -180,10 +291,12 @@ function EmptyState({
   searching,
   onLibrary,
   onFiles,
+  onPaste,
 }: {
   searching: boolean;
   onLibrary: () => void;
   onFiles: () => void;
+  onPaste: () => void;
 }) {
   if (searching) {
     return (
@@ -215,6 +328,16 @@ function EmptyState({
             label="Open from Files"
             subtitle="Stays on your device — never forced to the cloud"
             onPress={onFiles}
+          />
+          <BigButton
+            icon="clipboard-outline"
+            label="Paste from clipboard"
+            subtitle={
+              Platform.OS === "web"
+                ? "⌘V a video file or paste a .mp4 / .mov URL"
+                : "Paste a video URL from your clipboard"
+            }
+            onPress={onPaste}
           />
           <View style={styles.hintCard}>
             <Ionicons
@@ -321,6 +444,38 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerBtnPrimary: { backgroundColor: "#fff" },
+
+  importOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(0,0,0,0.72)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 28,
+    zIndex: 50,
+  },
+  importCard: {
+    width: "100%",
+    maxWidth: 340,
+    gap: 12,
+    padding: 22,
+    borderRadius: 16,
+    backgroundColor: "#161616",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+  },
+  importTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  importSub: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 18,
+  },
 
   emptySearching: {
     flex: 1,

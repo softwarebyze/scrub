@@ -1,5 +1,6 @@
 import { LoopBar } from "@/components/loop-bar";
 import { MarkersBar } from "@/components/markers-bar";
+import { MotionBar } from "@/components/motion-bar";
 import { RepeatingPressable } from "@/components/repeating-pressable";
 import { Scrubber } from "@/components/scrubber";
 import { SourceChip } from "@/components/source-chip";
@@ -56,8 +57,11 @@ export default function PlayerScreen() {
   const [tags, setTags] = useState<string[]>([]);
   const [loopIn, setLoopIn] = useState<number | null>(null);
   const [loopOut, setLoopOut] = useState<number | null>(null);
-  const [looping, setLooping] = useState(false);
+  const [abLooping, setAbLooping] = useState(false);
+  const [fullLooping, setFullLooping] = useState(false);
   const [muted, setMuted] = useState(false);
+  // Default collapsed — transport + scrubber stay; tags/thumbs/speed/loop/markers hide.
+  const [chromeExpanded, setChromeExpanded] = useState(false);
   const wasPlayingRef = useRef(false);
   const initialSeekRef = useRef<number | null>(null);
   const toastRef = useRef<ToastHandle>(null);
@@ -141,14 +145,43 @@ export default function PlayerScreen() {
     if (!record) return;
     const sub = player.addListener("timeUpdate", ({ currentTime: t }) => {
       setCurrentTime(t);
-      const range = looping ? clampLoop(loopIn, loopOut) : null;
+      const range = abLooping ? clampLoop(loopIn, loopOut) : null;
       if (range && t >= range.out - 0.02) {
         player.currentTime = range.in;
         setCurrentTime(range.in);
       }
     });
     return () => sub.remove();
-  }, [record, player, looping, loopIn, loopOut]);
+  }, [record, player, abLooping, loopIn, loopOut]);
+
+  // Full-video loop uses the player's native loop flag. A–B loop owns seeking
+  // itself, so turn native loop off whenever an A–B range is active.
+  useEffect(() => {
+    const range = clampLoop(loopIn, loopOut);
+    try {
+      player.loop = Boolean(fullLooping && !(abLooping && range));
+    } catch {}
+  }, [player, fullLooping, abLooping, loopIn, loopOut]);
+
+  // When playback hits the natural end without looping, park cleanly at the
+  // last frame so Play can restart without feeling stuck.
+  useEffect(() => {
+    if (!record) return;
+    const sub = player.addListener("playToEnd", () => {
+      const range = abLooping ? clampLoop(loopIn, loopOut) : null;
+      if (range) {
+        player.currentTime = range.in;
+        setCurrentTime(range.in);
+        player.play();
+        return;
+      }
+      if (fullLooping) return; // player.loop handles it
+      const end = Math.max(0, durationRef.current - FRAME);
+      player.currentTime = end;
+      setCurrentTime(end);
+    });
+    return () => sub.remove();
+  }, [record, player, abLooping, fullLooping, loopIn, loopOut]);
 
   useEffect(() => {
     try {
@@ -253,6 +286,23 @@ export default function PlayerScreen() {
     [player]
   );
 
+  const jumpToStart = useCallback(() => {
+    player.pause();
+    player.currentTime = 0;
+    setCurrentTime(0);
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    toastRef.current?.show("Start");
+  }, [player]);
+
+  const jumpToEnd = useCallback(() => {
+    player.pause();
+    const end = Math.max(0, durationRef.current - FRAME);
+    player.currentTime = end;
+    setCurrentTime(end);
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    toastRef.current?.show("End");
+  }, [player]);
+
   const goBack = useCallback(() => {
     if (record) {
       setPlaybackState(record.id, {
@@ -300,6 +350,27 @@ export default function PlayerScreen() {
     if (Platform.OS !== "web")
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (added) toastRef.current?.show("Marker added");
+  }, []);
+
+  const addMarkersAt = useCallback((times: number[]) => {
+    let added = 0;
+    setMarkers((prev) => {
+      let next = prev;
+      for (const t of times) {
+        if (next.some((m) => Math.abs(m - t) < 0.01)) continue;
+        if (next === prev) next = [...prev];
+        next.push(t);
+        added++;
+      }
+      return next === prev ? prev : next.sort((a, b) => a - b);
+    });
+    if (added) {
+      toastRef.current?.show(
+        added === 1 ? "Marker added" : `${added} markers added`,
+      );
+      if (Platform.OS !== "web")
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
   }, []);
 
   const clearAllMarkers = useCallback(() => {
@@ -357,13 +428,19 @@ export default function PlayerScreen() {
 
   const toggleLoop = useCallback(() => {
     const range = clampLoop(loopIn, loopOut);
-    if (!range) {
-      toastRef.current?.show("Set In and Out first");
+    if (range) {
+      setAbLooping((v) => {
+        const next = !v;
+        if (next) setFullLooping(false);
+        toastRef.current?.show(next ? "A–B loop on" : "A–B loop off");
+        return next;
+      });
       return;
     }
-    setLooping((v) => {
+    setFullLooping((v) => {
       const next = !v;
-      toastRef.current?.show(next ? "A–B loop on" : "A–B loop off");
+      setAbLooping(false);
+      toastRef.current?.show(next ? "Loop on" : "Loop off");
       return next;
     });
   }, [loopIn, loopOut]);
@@ -371,7 +448,7 @@ export default function PlayerScreen() {
   const clearLoop = useCallback(() => {
     setLoopIn(null);
     setLoopOut(null);
-    setLooping(false);
+    setAbLooping(false);
   }, []);
 
   const toggleMute = useCallback(() => {
@@ -434,6 +511,12 @@ export default function PlayerScreen() {
         case "saveFrame":
           captureFrame();
           break;
+        case "jumpStart":
+          jumpToStart();
+          break;
+        case "jumpEnd":
+          jumpToEnd();
+          break;
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -450,6 +533,8 @@ export default function PlayerScreen() {
     toggleLoop,
     toggleMute,
     captureFrame,
+    jumpToStart,
+    jumpToEnd,
   ]);
 
   if (!record) {
@@ -470,12 +555,29 @@ export default function PlayerScreen() {
             <Ionicons name="chevron-back" size={22} color="#fff" />
           </Pressable>
           <TitleEditor value={title} onChange={onChangeTitle} />
-          <Pressable style={styles.iconBtn} onPress={captureFrame} hitSlop={12}>
-            <Ionicons name="camera-outline" size={18} color="#fff" />
-          </Pressable>
+          <View style={styles.topBarActions}>
+            <Pressable
+              style={styles.iconBtn}
+              onPress={() => {
+                setChromeExpanded((v) => !v);
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+              }}
+              hitSlop={12}
+              accessibilityLabel={chromeExpanded ? "Minimize controls" : "Expand controls"}
+            >
+              <Ionicons
+                name={chromeExpanded ? "contract-outline" : "expand-outline"}
+                size={18}
+                color="#fff"
+              />
+            </Pressable>
+            <Pressable style={styles.iconBtn} onPress={captureFrame} hitSlop={12}>
+              <Ionicons name="camera-outline" size={18} color="#fff" />
+            </Pressable>
+          </View>
         </View>
 
-        <TagsEditor tags={tags} onChange={onChangeTags} />
+        {chromeExpanded && <TagsEditor tags={tags} onChange={onChangeTags} />}
 
         <Timeline
           duration={duration}
@@ -490,42 +592,89 @@ export default function PlayerScreen() {
           </View>
         </View>
 
-        <ThumbStrip
-          uri={record.uri}
-          player={player}
-          duration={duration}
-          currentTime={currentTime}
-          markers={sortedMarkers}
-          onSeek={jumpToMarker}
-          onAddMarkerAt={addMarkerAt}
-        />
+        {chromeExpanded && (
+          <>
+            <MotionBar
+              uri={record.uri}
+              duration={duration}
+              currentTime={currentTime}
+              rangeStart={loopIn}
+              rangeEnd={loopOut}
+              onSeek={jumpToMarker}
+              onMarkTimes={addMarkersAt}
+            />
 
-        <SpeedBar speed={speed} onChange={setSpeed} />
+            <ThumbStrip
+              uri={record.uri}
+              player={player}
+              duration={duration}
+              currentTime={currentTime}
+              markers={sortedMarkers}
+              onSeek={jumpToMarker}
+              onAddMarkerAt={addMarkerAt}
+            />
 
-        <LoopBar
-          inPoint={loopIn}
-          outPoint={loopOut}
-          looping={looping}
-          muted={muted}
-          onSetIn={setInPoint}
-          onSetOut={setOutPoint}
-          onToggleLoop={toggleLoop}
-          onClear={clearLoop}
-          onToggleMute={toggleMute}
-        />
+            <SpeedBar speed={speed} onChange={setSpeed} />
 
-        <MarkersBar
-          markers={sortedMarkers}
-          currentTime={currentTime}
-          onAdd={addMarker}
-          onJump={jumpToMarker}
-          onRemove={removeMarker}
-          onPrev={prevMarker}
-          onNext={nextMarker}
-          onClearAll={clearAllMarkers}
-        />
+            <LoopBar
+              inPoint={loopIn}
+              outPoint={loopOut}
+              abLooping={abLooping}
+              fullLooping={fullLooping}
+              muted={muted}
+              onSetIn={setInPoint}
+              onSetOut={setOutPoint}
+              onToggleLoop={toggleLoop}
+              onClear={clearLoop}
+              onToggleMute={toggleMute}
+            />
+
+            <MarkersBar
+              markers={sortedMarkers}
+              currentTime={currentTime}
+              onAdd={addMarker}
+              onJump={jumpToMarker}
+              onRemove={removeMarker}
+              onPrev={prevMarker}
+              onNext={nextMarker}
+              onClearAll={clearAllMarkers}
+            />
+          </>
+        )}
+
+        {!chromeExpanded && (
+          <View style={styles.essentials}>
+            <Pressable style={styles.essentialBtn} onPress={toggleMute} hitSlop={8}>
+              <Ionicons
+                name={muted ? "volume-mute" : "volume-medium"}
+                size={16}
+                color="#fff"
+              />
+            </Pressable>
+            <Pressable style={styles.essentialBtn} onPress={toggleLoop} hitSlop={8}>
+              <Ionicons
+                name="repeat"
+                size={16}
+                color={abLooping || fullLooping ? "#ff3b30" : "#fff"}
+              />
+            </Pressable>
+            <Pressable style={styles.essentialBtn} onPress={addMarker} hitSlop={8}>
+              <Ionicons name="bookmark-outline" size={16} color="#fff" />
+            </Pressable>
+            <Pressable
+              style={styles.essentialBtn}
+              onPress={() => setChromeExpanded(true)}
+              hitSlop={8}
+            >
+              <Text style={styles.essentialMore}>more</Text>
+            </Pressable>
+          </View>
+        )}
 
         <View style={styles.controls}>
+          <Pressable style={styles.edgeBtn} onPress={jumpToStart} hitSlop={8}>
+            <Ionicons name="play-skip-back" size={18} color="#fff" />
+          </Pressable>
           <View style={styles.jumpCluster}>
             <RepeatingPressable style={styles.jumpBtn} onPress={() => jumpFrames(-10)} hitSlop={8}>
               <Text style={styles.jumpTxt}>−10</Text>
@@ -558,6 +707,9 @@ export default function PlayerScreen() {
               <Text style={styles.jumpTxt}>+10</Text>
             </RepeatingPressable>
           </View>
+          <Pressable style={styles.edgeBtn} onPress={jumpToEnd} hitSlop={8}>
+            <Ionicons name="play-skip-forward" size={18} color="#fff" />
+          </Pressable>
         </View>
 
         <Scrubber
@@ -570,7 +722,7 @@ export default function PlayerScreen() {
 
         {Platform.OS === "web" && (
           <Text style={styles.hotkeyHint}>
-            Space play · ←/→ frame · Shift±5 · Alt±10 · I/O loop · M mark · F save · U mute
+            Space · ←/→ · Home/End · I/O loop · M mark · F save · U mute
           </Text>
         )}
       </View>
@@ -595,6 +747,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     gap: 12,
   },
+  topBarActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   iconBtn: {
     width: 34,
     height: 34,
@@ -619,6 +772,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   loader: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
+  essentials: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  essentialBtn: {
+    minWidth: 36,
+    height: 32,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  essentialMore: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 12,
+    fontWeight: "600",
+    // @ts-ignore
+    userSelect: "none",
+  },
   controls: {
     flexDirection: "row",
     alignItems: "center",
@@ -636,6 +813,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   jumpCluster: { flexDirection: "row", alignItems: "center", gap: 6 },
+  edgeBtn: {
+    width: 36,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   jumpBtn: {
     minWidth: 38,
     height: 38,
