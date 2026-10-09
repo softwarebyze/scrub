@@ -4,7 +4,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 type Props = {
   inPoint: number | null;
   outPoint: number | null;
-  looping: boolean;
+  /** A–B range loop (requires In/Out). */
+  abLooping: boolean;
+  /** Whole-video loop via player.loop. */
+  fullLooping: boolean;
   muted: boolean;
   onSetIn: () => void;
   onSetOut: () => void;
@@ -24,7 +27,8 @@ function fmt(t: number) {
 export function LoopBar({
   inPoint,
   outPoint,
-  looping,
+  abLooping,
+  fullLooping,
   muted,
   onSetIn,
   onSetOut,
@@ -32,7 +36,8 @@ export function LoopBar({
   onClear,
   onToggleMute,
 }: Props) {
-  const ready = inPoint != null && outPoint != null && outPoint > inPoint + 0.05;
+  const hasAb = inPoint != null && outPoint != null && outPoint > inPoint + 0.05;
+  const looping = hasAb ? abLooping : fullLooping;
 
   return (
     <View style={styles.wrap}>
@@ -55,15 +60,15 @@ export function LoopBar({
         </Text>
       </Pressable>
       <Pressable
-        style={[styles.iconBtn, looping && ready && styles.iconBtnActive]}
+        style={[styles.iconBtn, looping && styles.iconBtnActive]}
         onPress={onToggleLoop}
-        disabled={!ready}
         hitSlop={8}
+        accessibilityLabel={hasAb ? "Toggle A–B loop" : "Toggle full loop"}
       >
         <Ionicons
           name="repeat"
           size={16}
-          color={looping && ready ? "#000" : ready ? "#fff" : "rgba(255,255,255,0.35)"}
+          color={looping ? "#000" : "#fff"}
         />
       </Pressable>
       <Pressable
