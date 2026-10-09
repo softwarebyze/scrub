@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "bun run export:web",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/((?!_expo/).*)", "destination": "/index.html" }
+  ]
+}
