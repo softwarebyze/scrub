@@ -15,7 +15,7 @@
       "url": "https://u.expo.dev/ecea2033-e306-4070-bf58-7d4728087c3b"
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36"
     },
     "android": {
