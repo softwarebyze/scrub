@@ -3,7 +3,7 @@
     "name": "Scrub",
     "slug": "scrub",
     "version": "1.0.0",
-    "icon": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36",
+    "icon": "./assets/icon.png",
     "orientation": "default",
     "scheme": "scrub",
     "userInterfaceStyle": "dark",
@@ -16,12 +16,12 @@
     },
     "web": {
       "output": "single",
-      "favicon": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36"
+      "favicon": "./assets/favicon.png"
     },
     "android": {
       "package": "com.zackebenfeld.scrub",
       "adaptiveIcon": {
-        "foregroundImage": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
       "predictiveBackGestureEnabled": false,
@@ -104,12 +104,12 @@
       [
         "expo-splash-screen",
         {
-          "image": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36",
+          "image": "./assets/splash-icon.png",
           "backgroundColor": "#000000",
           "imageWidth": 160,
           "resizeMode": "contain",
           "dark": {
-            "image": "https://storage.googleapis.com/expo-agent-images-production/production/53a0adfc-d6e2-4848-9e0f-22cbfc75c655/019efd74-8404-7a4c-89d1-2b5a8061aabf/c9175438-ee0f-4c7b-8111-dc821c5c3f36",
+            "image": "./assets/splash-icon.png",
             "backgroundColor": "#000000",
             "imageWidth": 160,
             "resizeMode": "contain"
