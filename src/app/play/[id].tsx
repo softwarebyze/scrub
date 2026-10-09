@@ -216,9 +216,12 @@ export default function PlayerScreen() {
     dbSetMarkers(record.id, markers).catch(() => {});
   }, [record, hydrated, markers]);
 
+  const [scrubbing, setScrubbing] = useState(false);
+
   const onScrubStart = useCallback(() => {
     wasPlayingRef.current = player.playing;
     player.pause();
+    setScrubbing(true);
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [player]);
 
@@ -231,6 +234,7 @@ export default function PlayerScreen() {
   );
 
   const onScrubEnd = useCallback(() => {
+    setScrubbing(false);
     if (wasPlayingRef.current) player.play();
     if (Platform.OS !== "web")
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -612,6 +616,9 @@ export default function PlayerScreen() {
               markers={sortedMarkers}
               onSeek={jumpToMarker}
               onAddMarkerAt={addMarkerAt}
+              scrubbing={scrubbing}
+              onScrubStart={onScrubStart}
+              onScrubEnd={onScrubEnd}
             />
 
             <SpeedBar speed={speed} onChange={setSpeed} />

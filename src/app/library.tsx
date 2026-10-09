@@ -228,16 +228,37 @@ export default function Library() {
             <Pressable style={styles.headerBtn} onPress={pasteFromClipboard} hitSlop={10}>
               <Ionicons name="clipboard-outline" size={18} color="#fff" />
             </Pressable>
-            <Pressable style={styles.headerBtn} onPress={pickFromFiles} hitSlop={10}>
-              <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
-            </Pressable>
-            <Pressable
-              style={[styles.headerBtn, styles.headerBtnPrimary]}
-              onPress={pickFromLibrary}
-              hitSlop={10}
-            >
-              <Ionicons name="add" size={22} color="#000" />
-            </Pressable>
+            {/* On web both pickers open the same OS file dialog, so Files and
+                Photos are genuinely distinct only on native. */}
+            {Platform.OS === "web" ? (
+              <Pressable
+                style={[styles.headerBtn, styles.headerBtnPrimary]}
+                onPress={pickFromFiles}
+                hitSlop={10}
+                accessibilityLabel="Import video"
+              >
+                <Ionicons name="cloud-upload-outline" size={18} color="#000" />
+              </Pressable>
+            ) : (
+              <>
+                <Pressable
+                  style={styles.headerBtn}
+                  onPress={pickFromFiles}
+                  hitSlop={10}
+                  accessibilityLabel="Open from Files"
+                >
+                  <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
+                </Pressable>
+                <Pressable
+                  style={[styles.headerBtn, styles.headerBtnPrimary]}
+                  onPress={pickFromLibrary}
+                  hitSlop={10}
+                  accessibilityLabel="Pick from Photos"
+                >
+                  <Ionicons name="add" size={22} color="#000" />
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
 
@@ -316,19 +337,31 @@ function EmptyState({
           upload. No subscription.
         </Text>
         <View style={{ gap: 10, width: "100%" }}>
-          <BigButton
-            icon="videocam"
-            label="Pick from Photos"
-            subtitle="Golf swings, dance takes, anything you filmed"
-            onPress={onLibrary}
-            primary
-          />
-          <BigButton
-            icon="cloud-upload-outline"
-            label="Open from Files"
-            subtitle="Stays on your device — never forced to the cloud"
-            onPress={onFiles}
-          />
+          {Platform.OS === "web" ? (
+            <BigButton
+              icon="cloud-upload-outline"
+              label="Import a video"
+              subtitle="Stays on your device — never forced to the cloud"
+              onPress={onFiles}
+              primary
+            />
+          ) : (
+            <>
+              <BigButton
+                icon="videocam"
+                label="Pick from Photos"
+                subtitle="Golf swings, dance takes, anything you filmed"
+                onPress={onLibrary}
+                primary
+              />
+              <BigButton
+                icon="cloud-upload-outline"
+                label="Open from Files"
+                subtitle="Stays on your device — never forced to the cloud"
+                onPress={onFiles}
+              />
+            </>
+          )}
           <BigButton
             icon="clipboard-outline"
             label="Paste from clipboard"

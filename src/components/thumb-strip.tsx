@@ -1,7 +1,9 @@
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { runOnJS } from "react-native-reanimated";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { VideoPlayer } from "expo-video";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -22,6 +24,11 @@ type Props = {
   markers: number[];
   onSeek: (t: number) => void;
   onAddMarkerAt: (t: number) => void;
+  /** True while any control is actively scrubbing. Snaps instead of animating. */
+  scrubbing?: boolean;
+  /** Fired on strip drag begin/end so the player can mirror transport state. */
+  onScrubStart?: () => void;
+  onScrubEnd?: () => void;
 };
 
 const COUNT = 40;
@@ -29,6 +36,8 @@ const W = 72;
 const H = 48;
 const GAP = 4;
 const MAX_W = 144;
+
+const noop = () => {};
 
 async function extractWebThumbs(
   uri: string,
@@ -106,6 +115,9 @@ function ThumbStripInner({
   markers,
   onSeek,
   onAddMarkerAt,
+  scrubbing: scrubbingProp,
+  onScrubStart,
+  onScrubEnd,
 }: Props) {
   const [thumbs, setThumbs] = useState<Thumb[]>([]);
   const [loading, setLoading] = useState(false);
@@ -115,6 +127,13 @@ function ThumbStripInner({
   // Suppress auto-scroll only while the user is actively dragging the strip,
   // not on every tap. Reset on drag end so taps don't get penalized.
   const userDraggingRef = useRef(false);
+  const scrollXRef = useRef(0);
+  // True while the player is actively scrubbing from any control (the wheel,
+  // the transport, or this strip). Drives instant rather than animated
+  // auto-scroll — animating on every frame of a fast scrub makes successive
+  // scrolls cancel each other and the strip visibly lags the playhead.
+  const [stripScrubbing, setStripScrubbing] = useState(false);
+  const scrubbing = scrubbingProp ?? stripScrubbing;
 
   const sourceKey = `${uri ?? ""}:${Math.round(duration * 1000)}`;
   const [prevSourceKey, setPrevSourceKey] = useState(sourceKey);
@@ -199,10 +218,12 @@ function ThumbStripInner({
     if (userDraggingRef.current) return;
     const id = requestAnimationFrame(() => {
       const target = Math.max(0, activeIdx * (W + GAP) - 120);
-      scrollRef.current?.scrollTo({ x: target, animated: true });
+      // Snap while scrubbing so the strip tracks the playhead frame-for-frame;
+      // animate otherwise so playback and jumps glide instead of jittering.
+      scrollRef.current?.scrollTo({ x: target, animated: !scrubbing });
     });
     return () => cancelAnimationFrame(id);
-  }, [activeIdx]);
+  }, [activeIdx, scrubbing]);
 
   const handleSeek = (t: number) => {
     tap();
@@ -214,13 +235,52 @@ function ThumbStripInner({
     onAddMarkerAt(t);
   };
 
+  /**
+   * Scrub by dragging anywhere on the strip.
+   *
+   * Horizontal drag is already owned by the ScrollView (it scrolls the
+   * thumbnails), so scrubbing claims the gesture only once the movement is
+   * clearly vertical. That keeps both behaviours alive at once instead of
+   * fighting over the same touch.
+   */
+  const scrubFromX = (clientX: number) => {
+    if (duration <= 0 || thumbs.length === 0) return;
+    const idx = Math.round((clientX + scrollXRef.current - 120) / (W + GAP));
+    const clamped = Math.max(0, Math.min(thumbs.length - 1, idx));
+    onSeek(thumbs[clamped].time);
+  };
+
+  const scrubPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .minPointers(1)
+        .activeOffsetY([-8, 8])
+        .failOffsetX([-24, 24])
+        .onBegin((e) => {
+          runOnJS(onScrubStart ?? noop)();
+          runOnJS(scrubFromX)(e.x);
+        })
+        .onUpdate((e) => {
+          runOnJS(scrubFromX)(e.x);
+        })
+        .onFinalize(() => {
+          runOnJS(onScrubEnd ?? noop)();
+        }),
+    [onScrubEnd, onScrubStart, thumbs, duration]
+  );
+
   return (
-    <View style={styles.wrap}>
-      <ScrollView
+    <GestureDetector gesture={scrubPan}>
+      <View style={styles.wrap}>
+        <ScrollView
         ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
+        onScroll={(e) => {
+          scrollXRef.current = e.nativeEvent.contentOffset.x;
+        }}
+        scrollEventThrottle={16}
         onScrollBeginDrag={() => {
           userDraggingRef.current = true;
         }}
@@ -230,7 +290,6 @@ function ThumbStripInner({
         onMomentumScrollEnd={() => {
           userDraggingRef.current = false;
         }}
-        scrollEventThrottle={16}
       >
         {thumbs.map((item, index) => {
           const isActive = index === activeIdx;
@@ -261,9 +320,12 @@ function ThumbStripInner({
         </View>
       )}
       {thumbs.length > 0 && !loading && (
-        <Text style={styles.hint}>tap to seek · long-press to mark</Text>
+        <Text style={styles.hint}>
+          tap to seek · drag up/down to scrub · long-press to mark
+        </Text>
       )}
-    </View>
+      </View>
+    </GestureDetector>
   );
 }
 

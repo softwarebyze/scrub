@@ -158,7 +158,19 @@ const Row = memo(function Row({
           </View>
         )}
       </View>
-      <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" />
+      <View style={styles.rowActions}>
+        {/* Long-press still works, but delete was previously reachable only that
+            way, which made it undiscoverable. */}
+        <Pressable
+          onPress={onLongPress}
+          hitSlop={10}
+          accessibilityLabel={`Remove ${item.title || "video"} from library`}
+          style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.6 }]}
+        >
+          <Ionicons name="trash-outline" size={16} color="rgba(255,255,255,0.45)" />
+        </Pressable>
+        <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.3)" />
+      </View>
     </Pressable>
   );
 });
@@ -181,6 +193,14 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 8,
     borderRadius: 10,
+  },
+  rowActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  deleteBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
   thumb: {
     width: 64,
