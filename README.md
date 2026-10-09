@@ -10,13 +10,14 @@ Photos and most player UIs are built for casual watching. Scrub is built for the
 - **±1 / ±5 / ±10 frame jumps** (hold to repeat; keyboard on web)
 - **A–B loop**, mute, markers, tags, resume position
 - **Local-first library** (SQLite on native, localStorage on web)
-- **Marketing landing** at `/` (web); native opens the library
+- **No landing page** — `/` opens the library on every platform
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Marketing landing (web) → redirects to library on native |
+| `/` | Redirects to `/library` |
 | `/library` | Video library, import, search |
 | `/play/[id]` | Player + scrubber |
+| `/about` | Optional marketing page (web; library header on web) |
 
 ## Develop
 

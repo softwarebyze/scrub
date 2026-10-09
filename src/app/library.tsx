@@ -119,7 +119,7 @@ export default function Library() {
         <View style={styles.headerRow}>
           <Pressable
             onPress={() => {
-              if (Platform.OS === "web") router.push("/");
+              if (Platform.OS === "web") router.push("/about");
             }}
             disabled={Platform.OS !== "web"}
           >
